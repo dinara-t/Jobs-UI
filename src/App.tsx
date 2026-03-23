@@ -11,7 +11,11 @@ import { RequireAuth } from "./state/RequireAuth";
 import { useAuth } from "./state/AuthContext";
 
 export function App() {
-  const { isAuthed } = useAuth();
+  const { isAuthed, isReady } = useAuth();
+
+  if (!isReady) {
+    return null;
+  }
 
   return (
     <Routes>
@@ -20,7 +24,10 @@ export function App() {
           index
           element={<Navigate to={isAuthed ? "/jobs" : "/login"} replace />}
         />
-        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/login"
+          element={isAuthed ? <Navigate to="/jobs" replace /> : <LoginPage />}
+        />
 
         <Route
           path="/profile"

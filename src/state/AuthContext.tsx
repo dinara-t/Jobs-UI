@@ -1,11 +1,18 @@
-import React, { createContext, useContext, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { api } from "../api/endpoints";
-import { clearToken, getToken, setToken } from "./tokenStore";
-import type { LoginRequest } from "../api/types";
+import type { LoginRequest, Temp } from "../api/types";
 
 type AuthState = {
-  token: string | null;
   isAuthed: boolean;
+  isReady: boolean;
+  currentUser: Temp | null;
+  refreshSession: () => Promise<void>;
   login: (req: LoginRequest) => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -13,27 +20,46 @@ type AuthState = {
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [token, setTokenState] = useState<string | null>(getToken());
+  const [currentUser, setCurrentUser] = useState<Temp | null>(null);
+  const [isReady, setIsReady] = useState(false);
+
+  const refreshSession = async () => {
+    try {
+      const profile = await api.getProfile();
+      setCurrentUser(profile);
+    } catch {
+      setCurrentUser(null);
+    } finally {
+      setIsReady(true);
+    }
+  };
+
+  useEffect(() => {
+    void refreshSession();
+  }, []);
 
   const value = useMemo<AuthState>(() => {
     return {
-      token,
-      isAuthed: !!token,
+      isAuthed: !!currentUser,
+      isReady,
+      currentUser,
+      refreshSession,
       login: async (req) => {
-        const res = await api.login(req);
-        setToken(res.token);
-        setTokenState(res.token);
+        await api.login(req);
+        const profile = await api.getProfile();
+        setCurrentUser(profile);
+        setIsReady(true);
       },
       logout: async () => {
         try {
           await api.logout();
         } finally {
-          clearToken();
-          setTokenState(null);
+          setCurrentUser(null);
+          setIsReady(true);
         }
       },
     };
-  }, [token]);
+  }, [currentUser, isReady]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

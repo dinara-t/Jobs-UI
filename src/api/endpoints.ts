@@ -1,7 +1,6 @@
 import { http } from "./http";
 import type {
   LoginRequest,
-  LoginResponse,
   Job,
   JobPatch,
   Temp,
@@ -11,7 +10,7 @@ import type {
 
 export const api = {
   login: (payload: LoginRequest) =>
-    http<LoginResponse>("/auth/login", {
+    http<void>("/auth/login", {
       method: "POST",
       body: payload,
       auth: false,

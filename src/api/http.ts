@@ -1,5 +1,3 @@
-import { getToken, clearToken } from "../state/tokenStore";
-
 const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
 
 type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -18,6 +16,7 @@ export class HttpError extends Error {
 async function parseBody(res: Response) {
   const text = await res.text();
   if (!text) return null;
+
   try {
     return JSON.parse(text);
   } catch {
@@ -30,16 +29,10 @@ export async function http<T>(
   opts?: { method?: HttpMethod; body?: unknown; auth?: boolean },
 ): Promise<T> {
   const method = opts?.method ?? "GET";
-  const auth = opts?.auth ?? true;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-
-  if (auth) {
-    const token = getToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
-  }
 
   const res = await fetch(`${baseUrl}${path}`, {
     method,
@@ -49,10 +42,6 @@ export async function http<T>(
   });
 
   const body = await parseBody(res);
-
-  if (res.status === 401) {
-    clearToken();
-  }
 
   if (!res.ok) {
     throw new HttpError(res.status, body);

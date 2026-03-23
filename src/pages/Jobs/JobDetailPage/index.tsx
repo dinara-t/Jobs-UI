@@ -48,16 +48,17 @@ export function JobDetailPage() {
   async function load() {
     setBusy(true);
     setError(null);
+
     try {
       const j = await api.getJob(jobId);
       setJob(j);
 
       try {
-        const available = await api.listTemps(jobId);
-        setTemps(available);
+        const available = await api.listTemps({ jobId, page: 0, size: 100 });
+        setTemps(available.items);
       } catch {
-        const all = await api.listTemps();
-        setTemps(all);
+        const all = await api.listTemps({ page: 0, size: 100 });
+        setTemps(all.items);
       }
     } catch (err: any) {
       const msg =
@@ -70,68 +71,66 @@ export function JobDetailPage() {
     }
   }
 
-  useEffect(() => {
-    if (!Number.isFinite(jobId) || jobId <= 0) return;
-    load();
-  }, [jobId]);
-
-  useEffect(() => {
-    if (currentAssigned) setSelectedTempId(currentAssigned);
-    else setSelectedTempId("");
-  }, [currentAssigned]);
-
   async function assignTemp() {
-    if (selectedTempId === "" || !job) return;
+    if (!job || selectedTempId === "") return;
+
     setBusy(true);
     setError(null);
+
     try {
-      const usesAssignedTempId = job.assignedTemp !== undefined;
-      const patch = usesAssignedTempId
-        ? { assignedTempId: selectedTempId }
-        : { tempId: selectedTempId };
-      const updated = await api.patchJob(jobId, patch as any);
+      const updated = await api.patchJob(job.id, {
+        tempId: Number(selectedTempId),
+      });
       setJob(updated);
+      setSelectedTempId("");
+      await load();
     } catch (err: any) {
       const msg =
         typeof err?.body === "string"
           ? err.body
-          : (err?.body?.message ?? "Assign failed");
+          : (err?.body?.message ?? "Failed to assign temp");
       setError(msg);
-    } finally {
       setBusy(false);
     }
   }
 
   async function unassignTemp() {
     if (!job) return;
+
     setBusy(true);
     setError(null);
+
     try {
-      const usesAssignedTempId = job.assignedTemp !== undefined;
-      const patch = usesAssignedTempId
-        ? { assignedTempId: null }
-        : { tempId: 0 };
-      const updated = await api.patchJob(jobId, patch as any);
+      const updated = await api.patchJob(job.id, { tempId: 0 });
       setJob(updated);
+      setSelectedTempId("");
+      await load();
     } catch (err: any) {
       const msg =
         typeof err?.body === "string"
           ? err.body
-          : (err?.body?.message ?? "Unassign failed");
+          : (err?.body?.message ?? "Failed to unassign temp");
       setError(msg);
-    } finally {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (!Number.isFinite(jobId) || jobId <= 0) return;
+    void load();
+  }, [jobId]);
 
   if (!job && error) {
     return (
       <Card>
         <ErrorText>{error}</ErrorText>
         <Spacer h={10} />
-        <Button as={Link as any} to="/jobs">
-          Back to Jobs
-        </Button>
+        <Row>
+          <Button as={Link as any} to="/jobs">
+            Back to Jobs
+          </Button>
+          <Button onClick={() => nav(-1)}>Go Back</Button>
+        </Row>
       </Card>
     );
   }
@@ -151,13 +150,12 @@ export function JobDetailPage() {
       <Row style={{ justifyContent: "space-between" }}>
         <div>
           <H1>{displayName(job)}</H1>
-          <Muted>
-            Job ID: {job.id} • Assigned:{" "}
-            <strong>{t ? `${t.firstName} ${t.lastName}` : "Unassigned"}</strong>
-          </Muted>
+          <Muted>Job ID: {job.id}</Muted>
         </div>
         <Row>
-          <Button onClick={() => nav("/jobs")}>Back</Button>
+          <Button as={Link as any} to="/jobs">
+            Back
+          </Button>
           <Button onClick={load} disabled={busy}>
             {busy ? "Refreshing..." : "Refresh"}
           </Button>
@@ -177,50 +175,42 @@ export function JobDetailPage() {
 
       <Grid>
         <Card>
-          <H2>Details</H2>
-          {job.startDate && job.endDate ? (
-            <>
-              <Muted>
-                Dates: {job.startDate} → {job.endDate}
-              </Muted>
-              <Spacer h={8} />
-            </>
-          ) : null}
-
-          {job.client || job.location ? (
-            <>
-              <Muted>{job.client ? `Client: ${job.client}` : null}</Muted>
-              <Muted>{job.location ? `Location: ${job.location}` : null}</Muted>
-              <Spacer h={8} />
-            </>
-          ) : null}
-
-          {job.description ? <Muted>{job.description}</Muted> : null}
+          <H2>Job details</H2>
+          <Spacer h={10} />
+          <Muted>Start date: {job.startDate}</Muted>
+          <Spacer h={6} />
+          <Muted>End date: {job.endDate}</Muted>
+          <Spacer h={6} />
+          <Muted>
+            Assigned temp:{" "}
+            {t ? `${t.firstName} ${t.lastName} (#${t.id})` : "Unassigned"}
+          </Muted>
         </Card>
 
         <Card>
-          <H2>Assign temp</H2>
-          <Muted>
-            Select an available temp (if the API supports availability
-            filtering).
-          </Muted>
+          <H2>Assignment</H2>
           <Spacer h={10} />
 
           <TwoCol>
-            <Select
-              value={selectedTempId}
-              onChange={(e) => {
-                const v = e.target.value;
-                setSelectedTempId(v === "" ? "" : Number(v));
-              }}
-            >
-              <option value="">Unassigned</option>
-              {temps.map((x) => (
-                <option key={x.id} value={x.id}>
-                  {x.firstName} {x.lastName} (#{x.id})
-                </option>
-              ))}
-            </Select>
+            <div>
+              <Muted>Assign temp</Muted>
+              <Spacer h={6} />
+              <Select
+                value={selectedTempId}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSelectedTempId(value === "" ? "" : Number(value));
+                }}
+                disabled={busy}
+              >
+                <option value="">Select a temp</option>
+                {temps.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.firstName} {x.lastName} (#{x.id})
+                  </option>
+                ))}
+              </Select>
+            </div>
 
             <Row style={{ justifyContent: "space-between" }}>
               <Button

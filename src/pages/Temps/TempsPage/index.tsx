@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import styled from "styled-components";
 import { api } from "../../../api/endpoints";
-import type { Temp } from "../../../api/types";
+import type { PageResponse, Temp } from "../../../api/types";
 import {
   Button,
   Card,
@@ -29,17 +29,37 @@ const TempTitle = styled(Link)`
   }
 `;
 
+const Pager = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+`;
+
+const emptyPage: PageResponse<Temp> = {
+  items: [],
+  page: 0,
+  size: 10,
+  totalItems: 0,
+  totalPages: 0,
+  hasNext: false,
+  hasPrevious: false,
+};
+
 export function TempsPage() {
-  const [temps, setTemps] = useState<Temp[]>([]);
+  const [pageData, setPageData] = useState<PageResponse<Temp>>(emptyPage);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const size = 10;
 
   async function load() {
     setBusy(true);
     setError(null);
     try {
-      const data = await api.listTemps();
-      setTemps(data);
+      const data = await api.listTemps({ page, size });
+      setPageData(data);
     } catch (err: any) {
       const msg =
         typeof err?.body === "string"
@@ -52,16 +72,17 @@ export function TempsPage() {
   }
 
   useEffect(() => {
-    load();
-  }, []);
+    void load();
+  }, [page]);
 
   return (
     <div>
       <Row style={{ justifyContent: "space-between" }}>
         <div>
           <H1>Temps</H1>
-          <Muted>View temps and their assigned jobs.</Muted>
+          <Muted>Browse visible temps in your reporting tree.</Muted>
         </div>
+
         <Button onClick={load} disabled={busy}>
           {busy ? "Refreshing..." : "Refresh"}
         </Button>
@@ -69,8 +90,40 @@ export function TempsPage() {
 
       <Spacer h={16} />
 
+      <Card>
+        <Pager>
+          <Muted>
+            {busy
+              ? "Loading temps..."
+              : `Showing ${pageData.items.length} of ${pageData.totalItems} temps`}
+          </Muted>
+
+          <Row>
+            <Button
+              onClick={() => setPage((prev) => Math.max(prev - 1, 0))}
+              disabled={busy || !pageData.hasPrevious}
+            >
+              Previous
+            </Button>
+            <Button
+              onClick={() => setPage((prev) => prev + 1)}
+              disabled={busy || !pageData.hasNext}
+            >
+              Next
+            </Button>
+          </Row>
+        </Pager>
+
+        <Spacer h={8} />
+        <Muted>
+          Page {pageData.totalPages === 0 ? 0 : pageData.page + 1} of{" "}
+          {pageData.totalPages}
+        </Muted>
+      </Card>
+
       {error ? (
         <>
+          <Spacer h={12} />
           <Card>
             <ErrorText>{error}</ErrorText>
           </Card>
@@ -78,8 +131,10 @@ export function TempsPage() {
         </>
       ) : null}
 
+      <Spacer h={12} />
+
       <List>
-        {temps.map((t) => (
+        {pageData.items.map((t) => (
           <Card key={t.id}>
             <H2 style={{ marginBottom: 6 }}>
               <TempTitle to={`/temps/${t.id}`}>
@@ -91,7 +146,7 @@ export function TempsPage() {
         ))}
       </List>
 
-      {!busy && temps.length === 0 ? (
+      {!busy && pageData.items.length === 0 ? (
         <>
           <Spacer h={14} />
           <Card>

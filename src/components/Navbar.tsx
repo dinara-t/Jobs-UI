@@ -1,6 +1,8 @@
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../state/AuthContext";
+import Logo from "./brand/Logo";;
+
 
 const Bar = styled.header`
   position: sticky;
@@ -69,7 +71,7 @@ export function Navbar() {
   return (
     <Bar>
       <Inner>
-        <Brand to="/">Job Assignment</Brand>
+        <Brand to="/"><Logo/></Brand>
         <Nav>
           {isAuthed ? (
             <>

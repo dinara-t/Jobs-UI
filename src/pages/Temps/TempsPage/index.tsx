@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import styled from "styled-components";
 import { api } from "../../../api/endpoints";
+import { getErrorMessage } from "../../../api/getErrorMessage";
 import type { PageResponse, Temp } from "../../../api/types";
 import { Pagination } from "../../../components/Pagination";
 import {
@@ -15,6 +17,7 @@ import {
   Select,
   Spacer,
 } from "../../../components/Primitives";
+import { queryKeys } from "../../../query/queryKeys";
 
 const List = styled.div`
   display: grid;
@@ -42,44 +45,36 @@ const emptyPage: PageResponse<Temp> = {
 };
 
 export function TempsPage() {
-  const [pageData, setPageData] = useState<PageResponse<Temp>>(emptyPage);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"id" | "name" | "jobCount">("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
   const size = 10;
 
-  async function load() {
-    setBusy(true);
-    setError(null);
-
-    try {
-      const data = await api.listTemps({
-        sortBy,
-        sortDir,
-        page,
-        size,
-      });
-      setPageData(data);
-    } catch (err: any) {
-      const msg =
-        typeof err?.body === "string"
-          ? err.body
-          : (err?.body?.message ?? "Failed to load temps");
-      setError(msg);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   useEffect(() => {
     setPage(0);
   }, [sortBy, sortDir]);
 
-  useEffect(() => {
-    void load();
-  }, [sortBy, sortDir, page]);
+  const params = useMemo(
+    () => ({
+      sortBy,
+      sortDir,
+      page,
+      size,
+    }),
+    [sortBy, sortDir, page],
+  );
+
+  const tempsQuery = useQuery({
+    queryKey: queryKeys.temps(params),
+    queryFn: () => api.listTemps(params),
+    placeholderData: keepPreviousData,
+  });
+
+  const pageData = tempsQuery.data ?? emptyPage;
+  const busy = tempsQuery.isFetching;
+  const error = tempsQuery.error
+    ? getErrorMessage(tempsQuery.error, "Failed to load temps")
+    : null;
 
   return (
     <div>
@@ -119,7 +114,7 @@ export function TempsPage() {
             </Select>
           </div>
 
-          <Button onClick={load} disabled={busy}>
+          <Button onClick={() => void tempsQuery.refetch()} disabled={busy}>
             {busy ? "Refreshing..." : "Refresh"}
           </Button>
         </Row>
@@ -128,7 +123,7 @@ export function TempsPage() {
       <Spacer h={16} />
 
       <Muted>
-        {busy ? "Loading temps..." : `Showing ${pageData.totalItems} temps`}
+        {tempsQuery.isLoading ? "Loading temps..." : `Showing ${pageData.totalItems} temps`}
       </Muted>
 
       {error ? (
@@ -158,7 +153,7 @@ export function TempsPage() {
         ))}
       </List>
 
-      {!busy && pageData.items.length === 0 ? (
+      {!tempsQuery.isLoading && pageData.items.length === 0 ? (
         <>
           <Spacer h={14} />
           <Card>

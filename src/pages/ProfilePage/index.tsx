@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/endpoints";
+import { getErrorMessage } from "../../api/getErrorMessage";
 import type { TempUpdate } from "../../api/types";
 import {
   Button,
@@ -11,8 +13,11 @@ import {
   Row,
   Spacer,
 } from "../../components/Primitives";
+import { queryKeys } from "../../query/queryKeys";
 
 export function ProfilePage() {
+  const queryClient = useQueryClient();
+
   const [form, setForm] = useState<TempUpdate>({
     firstName: "",
     lastName: "",
@@ -20,58 +25,58 @@ export function ProfilePage() {
     password: "",
     managerId: null,
   });
-  const [busy, setBusy] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  async function load() {
-    setBusy(true);
-    setError(null);
-    setSuccess(null);
+  const profileQuery = useQuery({
+    queryKey: queryKeys.profile,
+    queryFn: () => api.getProfile(),
+  });
 
-    try {
-      const profile = await api.getProfile();
-      setForm({
-        firstName: profile.firstName,
-        lastName: profile.lastName,
-        email: profile.email,
-        password: "",
-        managerId: profile.managerId,
-      });
-    } catch (err: any) {
-      const msg =
-        typeof err?.body === "string"
-          ? err.body
-          : (err?.body?.message ?? "Failed to load profile");
-      setError(msg);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const saveProfileMutation = useMutation({
+    mutationFn: (payload: TempUpdate) => api.patchProfile(payload),
+  });
 
   useEffect(() => {
-    load();
-  }, []);
+    if (!profileQuery.data) {
+      return;
+    }
+
+    setForm({
+      firstName: profileQuery.data.firstName,
+      lastName: profileQuery.data.lastName,
+      email: profileQuery.data.email,
+      password: "",
+      managerId: profileQuery.data.managerId,
+    });
+  }, [profileQuery.data]);
+
+  const busy = profileQuery.isFetching;
+  const saving = saveProfileMutation.isPending;
+
+  const error = saveProfileMutation.error
+    ? getErrorMessage(saveProfileMutation.error, "Failed to update profile")
+    : profileQuery.error
+      ? getErrorMessage(profileQuery.error, "Failed to load profile")
+      : null;
 
   async function save() {
-    setSaving(true);
-    setError(null);
     setSuccess(null);
 
+    const payload: TempUpdate = {
+      firstName: form.firstName.trim(),
+      lastName: form.lastName.trim(),
+      email: form.email.trim(),
+      managerId: form.managerId,
+    };
+
+    if (form.password && form.password.trim()) {
+      payload.password = form.password;
+    }
+
     try {
-      const payload: TempUpdate = {
-        firstName: form.firstName.trim(),
-        lastName: form.lastName.trim(),
-        email: form.email.trim(),
-        managerId: form.managerId,
-      };
+      const updated = await saveProfileMutation.mutateAsync(payload);
 
-      if (form.password && form.password.trim()) {
-        payload.password = form.password;
-      }
-
-      const updated = await api.patchProfile(payload);
+      queryClient.setQueryData(queryKeys.profile, updated);
 
       setForm({
         firstName: updated.firstName,
@@ -82,14 +87,7 @@ export function ProfilePage() {
       });
 
       setSuccess("Profile updated.");
-    } catch (err: any) {
-      const msg =
-        typeof err?.body === "string"
-          ? err.body
-          : (err?.body?.message ?? "Failed to update profile");
-      setError(msg);
-    } finally {
-      setSaving(false);
+    } catch {
     }
   }
 
@@ -101,7 +99,13 @@ export function ProfilePage() {
           <Muted>View and update your account details.</Muted>
         </div>
         <Row>
-          <Button onClick={load} disabled={busy || saving}>
+          <Button
+            onClick={() => {
+              setSuccess(null);
+              void profileQuery.refetch();
+            }}
+            disabled={busy || saving}
+          >
             {busy ? "Refreshing..." : "Refresh"}
           </Button>
         </Row>
@@ -188,7 +192,7 @@ export function ProfilePage() {
         <Spacer h={16} />
 
         <Row>
-          <Button onClick={save} disabled={busy || saving}>
+          <Button onClick={() => void save()} disabled={busy || saving}>
             {saving ? "Saving..." : "Save profile"}
           </Button>
         </Row>

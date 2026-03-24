@@ -1,12 +1,8 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import React, { createContext, useCallback, useContext } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/endpoints";
 import type { LoginRequest, Temp } from "../api/types";
+import { queryKeys } from "../query/queryKeys";
 
 type AuthState = {
   isAuthed: boolean;
@@ -20,46 +16,61 @@ type AuthState = {
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [currentUser, setCurrentUser] = useState<Temp | null>(null);
-  const [isReady, setIsReady] = useState(false);
+  const queryClient = useQueryClient();
 
-  const refreshSession = async () => {
+  const profileQuery = useQuery<Temp>({
+    queryKey: queryKeys.profile,
+    queryFn: () => api.getProfile(),
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const loginMutation = useMutation({
+    mutationFn: (req: LoginRequest) => api.login(req),
+  });
+
+  const logoutMutation = useMutation({
+    mutationFn: () => api.logout(),
+  });
+
+  const refreshSession = useCallback(async () => {
+    await profileQuery.refetch();
+  }, [profileQuery]);
+
+  const login = useCallback(
+    async (req: LoginRequest) => {
+      await loginMutation.mutateAsync(req);
+      await queryClient.fetchQuery({
+        queryKey: queryKeys.profile,
+        queryFn: () => api.getProfile(),
+        retry: false,
+        staleTime: 0,
+      });
+    },
+    [loginMutation, queryClient],
+  );
+
+  const logout = useCallback(async () => {
     try {
-      const profile = await api.getProfile();
-      setCurrentUser(profile);
-    } catch {
-      setCurrentUser(null);
+      await logoutMutation.mutateAsync();
     } finally {
-      setIsReady(true);
+      queryClient.setQueryData(queryKeys.profile, null);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.profile });
     }
+  }, [logoutMutation, queryClient]);
+
+  const currentUser = profileQuery.data ?? null;
+  const isReady = !profileQuery.isPending;
+  const isAuthed = !!currentUser;
+
+  const value: AuthState = {
+    isAuthed,
+    isReady,
+    currentUser,
+    refreshSession,
+    login,
+    logout,
   };
-
-  useEffect(() => {
-    void refreshSession();
-  }, []);
-
-  const value = useMemo<AuthState>(() => {
-    return {
-      isAuthed: !!currentUser,
-      isReady,
-      currentUser,
-      refreshSession,
-      login: async (req) => {
-        await api.login(req);
-        const profile = await api.getProfile();
-        setCurrentUser(profile);
-        setIsReady(true);
-      },
-      logout: async () => {
-        try {
-          await api.logout();
-        } finally {
-          setCurrentUser(null);
-          setIsReady(true);
-        }
-      },
-    };
-  }, [currentUser, isReady]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

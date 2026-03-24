@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import styled from "styled-components";
 import { useAuth } from "../../state/AuthContext";
+import { getErrorMessage } from "../../api/getErrorMessage";
 import {
   Card,
   H1,
@@ -29,10 +30,7 @@ export function LoginPage() {
   const { login } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
-  const to = useMemo(
-    () => (loc.state as { from?: string } | null)?.from ?? "/jobs",
-    [loc.state],
-  );
+  const to = (loc.state as { from?: string } | null)?.from ?? "/jobs";
 
   const [busy, setBusy] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -60,12 +58,8 @@ export function LoginPage() {
         password: data.password,
       });
       nav(to, { replace: true });
-    } catch (err: any) {
-      const msg =
-        typeof err?.body === "string"
-          ? err.body
-          : (err?.body?.message ?? "Login failed");
-      setLoginError(msg);
+    } catch (error) {
+      setLoginError(getErrorMessage(error, "Login failed"));
     } finally {
       setBusy(false);
     }

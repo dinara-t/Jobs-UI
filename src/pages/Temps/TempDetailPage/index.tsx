@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import styled from "styled-components";
 import { api } from "../../../api/endpoints";
+import { getErrorMessage } from "../../../api/getErrorMessage";
 import type { TempWithJobs } from "../../../api/types";
 import {
   Button,
@@ -13,6 +14,7 @@ import {
   Row,
   Spacer,
 } from "../../../components/Primitives";
+import { queryKeys } from "../../../query/queryKeys";
 
 const Jobs = styled.div`
   display: grid;
@@ -32,32 +34,21 @@ const JobLink = styled(Link)`
 export function TempDetailPage() {
   const { id } = useParams();
   const tempId = Number(id);
+  const validTempId = Number.isFinite(tempId) && tempId > 0;
 
-  const [temp, setTemp] = useState<TempWithJobs | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const tempQuery = useQuery<TempWithJobs>({
+    queryKey: queryKeys.temp(tempId),
+    queryFn: () => api.getTemp(tempId),
+    enabled: validTempId,
+  });
 
-  async function load() {
-    setBusy(true);
-    setError(null);
-    try {
-      const data = await api.getTemp(tempId);
-      setTemp(data);
-    } catch (err: any) {
-      const msg =
-        typeof err?.body === "string"
-          ? err.body
-          : (err?.body?.message ?? "Failed to load temp");
-      setError(msg);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!Number.isFinite(tempId) || tempId <= 0) return;
-    load();
-  }, [tempId]);
+  const temp = tempQuery.data ?? null;
+  const busy = tempQuery.isFetching;
+  const error = tempQuery.error
+    ? getErrorMessage(tempQuery.error, "Failed to load temp")
+    : !validTempId
+      ? "Invalid temp id"
+      : null;
 
   if (!temp && error) {
     return (
@@ -92,7 +83,7 @@ export function TempDetailPage() {
           <Button as={Link as any} to="/temps">
             Back
           </Button>
-          <Button onClick={load} disabled={busy}>
+          <Button onClick={() => void tempQuery.refetch()} disabled={busy}>
             {busy ? "Refreshing..." : "Refresh"}
           </Button>
         </Row>

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import styled from "styled-components";
 import { api } from "../../../api/endpoints";
+import { getErrorMessage } from "../../../api/getErrorMessage";
 import type { Job, PageResponse } from "../../../api/types";
 import { Pagination } from "../../../components/Pagination";
 import {
@@ -15,6 +17,7 @@ import {
   Select,
   ErrorText,
 } from "../../../components/Primitives";
+import { queryKeys } from "../../../query/queryKeys";
 
 const List = styled.div`
   display: grid;
@@ -59,9 +62,6 @@ const emptyPage: PageResponse<Job> = {
 };
 
 export function JobsPage() {
-  const [pageData, setPageData] = useState<PageResponse<Job>>(emptyPage);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [assignedFilter, setAssignedFilter] = useState<
     "all" | "assigned" | "unassigned"
   >("all");
@@ -70,42 +70,35 @@ export function JobsPage() {
   const [page, setPage] = useState(0);
   const size = 10;
 
-  const assignedParam = useMemo(() => {
-    if (assignedFilter === "all") return undefined;
-    return assignedFilter === "assigned";
-  }, [assignedFilter]);
-
-  async function load() {
-    setBusy(true);
-    setError(null);
-
-    try {
-      const data = await api.listJobs({
-        assigned: assignedParam,
-        sortBy,
-        sortDir,
-        page,
-        size,
-      });
-      setPageData(data);
-    } catch (err: any) {
-      const msg =
-        typeof err?.body === "string"
-          ? err.body
-          : (err?.body?.message ?? "Failed to load jobs");
-      setError(msg);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   useEffect(() => {
     setPage(0);
-  }, [assignedParam, sortBy, sortDir]);
+  }, [assignedFilter, sortBy, sortDir]);
 
-  useEffect(() => {
-    void load();
-  }, [assignedParam, sortBy, sortDir, page]);
+  const assignedParam =
+    assignedFilter === "all" ? undefined : assignedFilter === "assigned";
+
+  const params = useMemo(
+    () => ({
+      assigned: assignedParam,
+      sortBy,
+      sortDir,
+      page,
+      size,
+    }),
+    [assignedParam, sortBy, sortDir, page],
+  );
+
+  const jobsQuery = useQuery({
+    queryKey: queryKeys.jobs(params),
+    queryFn: () => api.listJobs(params),
+    placeholderData: keepPreviousData,
+  });
+
+  const pageData = jobsQuery.data ?? emptyPage;
+  const busy = jobsQuery.isFetching;
+  const error = jobsQuery.error
+    ? getErrorMessage(jobsQuery.error, "Failed to load jobs")
+    : null;
 
   return (
     <div>
@@ -160,7 +153,7 @@ export function JobsPage() {
             </Select>
           </div>
 
-          <Button onClick={load} disabled={busy}>
+          <Button onClick={() => void jobsQuery.refetch()} disabled={busy}>
             {busy ? "Refreshing..." : "Refresh"}
           </Button>
         </Row>
@@ -169,7 +162,7 @@ export function JobsPage() {
       <Spacer h={16} />
 
       <Muted>
-        {busy ? "Loading jobs..." : `Showing ${pageData.totalItems} jobs`}
+        {jobsQuery.isLoading ? "Loading jobs..." : `Showing ${pageData.totalItems} jobs`}
       </Muted>
 
       {error ? (
@@ -206,7 +199,7 @@ export function JobsPage() {
         ))}
       </List>
 
-      {!busy && pageData.items.length === 0 ? (
+      {!jobsQuery.isLoading && pageData.items.length === 0 ? (
         <>
           <Spacer h={14} />
           <Card>

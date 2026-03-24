@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import styled from "styled-components";
 import { api } from "../../../api/endpoints";
+import { getErrorMessage } from "../../../api/getErrorMessage";
 import type { Job, Temp } from "../../../api/types";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import {
@@ -17,6 +19,7 @@ import {
   Spacer,
 } from "../../../components/Primitives";
 import { Toast } from "../../../components/Toast";
+import { queryKeys } from "../../../query/queryKeys";
 
 const TwoCol = styled.div`
   display: grid;
@@ -62,21 +65,20 @@ function tempLabel(temp: Temp) {
   return `${temp.firstName} ${temp.lastName} (#${temp.id}) - Jobs taken: ${temp.jobCount ?? 0}`;
 }
 
-function fullTempName(temp: Temp) {
+function fullTempName(temp: { firstName: string; lastName: string }) {
   return `${temp.firstName} ${temp.lastName}`;
 }
 
 export function JobDetailPage() {
   const { id } = useParams();
   const jobId = Number(id);
+  const validJobId = Number.isFinite(jobId) && jobId > 0;
   const nav = useNavigate();
+  const queryClient = useQueryClient();
 
-  const [job, setJob] = useState<Job | null>(null);
-  const [temps, setTemps] = useState<Temp[]>([]);
   const [selectedTempId, setSelectedTempId] = useState<number | "">("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>({
     open: false,
     type: "success",
@@ -84,83 +86,95 @@ export function JobDetailPage() {
     message: "",
   });
 
-  const currentAssigned = useMemo(() => {
-    const t = job ? assigned(job) : null;
-    return t?.id ?? null;
-  }, [job]);
+  const jobQuery = useQuery({
+    queryKey: queryKeys.job(jobId),
+    queryFn: () => api.getJob(jobId),
+    enabled: validJobId,
+  });
 
-  const selectedTemp = useMemo(() => {
-    if (selectedTempId === "") return null;
-    return temps.find((temp) => temp.id === selectedTempId) ?? null;
-  }, [temps, selectedTempId]);
-
-  async function load() {
-    setBusy(true);
-    setError(null);
-
-    try {
-      const j = await api.getJob(jobId);
-      setJob(j);
-
+  const availableTempsQuery = useQuery({
+    queryKey: queryKeys.availableTemps(jobId),
+    queryFn: async () => {
       try {
-        const available = await api.listTemps({
+        return await api.listTemps({
           jobId,
           sortBy: "jobCount",
           sortDir: "asc",
           page: 0,
           size: 100,
         });
-        setTemps(available.items);
       } catch {
-        const all = await api.listTemps({
+        return api.listTemps({
           sortBy: "jobCount",
           sortDir: "asc",
           page: 0,
           size: 100,
         });
-        setTemps(all.items);
       }
-    } catch (err: any) {
-      const msg =
-        typeof err?.body === "string"
-          ? err.body
-          : (err?.body?.message ?? "Failed to load job");
-      setError(msg);
-    } finally {
-      setBusy(false);
-    }
+    },
+    enabled: validJobId,
+  });
+
+  const job = jobQuery.data ?? null;
+  const temps = availableTempsQuery.data?.items ?? [];
+  const currentAssigned = job ? assigned(job)?.id ?? null : null;
+  const selectedTemp =
+    selectedTempId === ""
+      ? null
+      : temps.find((temp) => temp.id === selectedTempId) ?? null;
+
+  const busy =
+    jobQuery.isFetching ||
+    availableTempsQuery.isFetching ||
+    pendingAction !== null;
+
+  const error = actionError
+    ?? (jobQuery.error
+      ? getErrorMessage(jobQuery.error, "Failed to load job")
+      : availableTempsQuery.error
+        ? getErrorMessage(availableTempsQuery.error, "Failed to load temps")
+        : !validJobId
+          ? "Invalid job id"
+          : null);
+
+  async function refresh() {
+    setActionError(null);
+    await Promise.all([jobQuery.refetch(), availableTempsQuery.refetch()]);
+  }
+
+  async function invalidateRelatedData() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["jobs"] }),
+      queryClient.invalidateQueries({ queryKey: ["temps"] }),
+      queryClient.invalidateQueries({ queryKey: ["temp"] }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.job(jobId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.availableTemps(jobId) }),
+    ]);
   }
 
   async function assignTemp() {
     if (!job || !selectedTemp) return;
 
-    setBusy(true);
-    setError(null);
+    setActionError(null);
 
     try {
       const updated = await api.patchJob(job.id, {
         tempId: selectedTemp.id,
       });
 
-      setJob(updated);
+      queryClient.setQueryData(queryKeys.job(job.id), updated);
+      await invalidateRelatedData();
+
       setSelectedTempId("");
       setPendingAction(null);
-
-      await load();
-
       setToast({
         open: true,
         type: "success",
         title: "Assignment updated",
         message: `${fullTempName(selectedTemp)} has been assigned to ${displayName(job)}.`,
       });
-    } catch (err: any) {
-      const msg =
-        typeof err?.body === "string"
-          ? err.body
-          : (err?.body?.message ?? "Failed to assign temp");
-
-      setError(msg);
+    } catch (error) {
+      setActionError(getErrorMessage(error, "Failed to assign temp"));
       setPendingAction(null);
       setToast({
         open: true,
@@ -168,7 +182,6 @@ export function JobDetailPage() {
         title: "Assignment failed",
         message: `Failed to assign ${selectedTemp ? fullTempName(selectedTemp) : "temp"} to ${displayName(job)}.`,
       });
-      setBusy(false);
     }
   }
 
@@ -176,32 +189,24 @@ export function JobDetailPage() {
     if (!job) return;
 
     const assignedTemp = assigned(job);
-
-    setBusy(true);
-    setError(null);
+    setActionError(null);
 
     try {
       const updated = await api.patchJob(job.id, { tempId: 0 });
 
-      setJob(updated);
+      queryClient.setQueryData(queryKeys.job(job.id), updated);
+      await invalidateRelatedData();
+
       setSelectedTempId("");
       setPendingAction(null);
-
-      await load();
-
       setToast({
         open: true,
         type: "success",
         title: "Assignment removed",
         message: `${assignedTemp ? fullTempName(assignedTemp) : "The temp"} has been unassigned from ${displayName(job)}.`,
       });
-    } catch (err: any) {
-      const msg =
-        typeof err?.body === "string"
-          ? err.body
-          : (err?.body?.message ?? "Failed to unassign temp");
-
-      setError(msg);
+    } catch (error) {
+      setActionError(getErrorMessage(error, "Failed to unassign temp"));
       setPendingAction(null);
       setToast({
         open: true,
@@ -209,14 +214,8 @@ export function JobDetailPage() {
         title: "Unassignment failed",
         message: `Failed to unassign ${assignedTemp ? fullTempName(assignedTemp) : "the temp"} from ${displayName(job)}.`,
       });
-      setBusy(false);
     }
   }
-
-  useEffect(() => {
-    if (!Number.isFinite(jobId) || jobId <= 0) return;
-    void load();
-  }, [jobId]);
 
   if (!job && error) {
     return (
@@ -255,7 +254,7 @@ export function JobDetailPage() {
             <Button as={Link as any} to="/jobs">
               Back
             </Button>
-            <Button onClick={load} disabled={busy}>
+            <Button onClick={() => void refresh()} disabled={busy}>
               {busy ? "Refreshing..." : "Refresh"}
             </Button>
           </Row>
@@ -281,8 +280,7 @@ export function JobDetailPage() {
             <Muted>End date: {job.endDate}</Muted>
             <Spacer h={6} />
             <Muted>
-              Assigned temp:{" "}
-              {t ? `${t.firstName} ${t.lastName} (#${t.id})` : "Unassigned"}
+              Assigned temp: {t ? `${t.firstName} ${t.lastName} (#${t.id})` : "Unassigned"}
             </Muted>
           </Card>
 
@@ -329,9 +327,7 @@ export function JobDetailPage() {
 
                 <CurrentAssignmentBox>
                   <Muted>
-                    {t
-                      ? `${t.firstName} ${t.lastName} (#${t.id})`
-                      : "Unassigned"}
+                    {t ? `${t.firstName} ${t.lastName} (#${t.id})` : "Unassigned"}
                   </Muted>
                 </CurrentAssignmentBox>
 
@@ -365,9 +361,9 @@ export function JobDetailPage() {
         }
         confirmLabel="Confirm"
         confirmVariant="primary"
-        busy={busy}
+        busy={false}
         onCancel={() => setPendingAction(null)}
-        onConfirm={assignTemp}
+        onConfirm={() => void assignTemp()}
       />
 
       <ConfirmDialog
@@ -380,9 +376,9 @@ export function JobDetailPage() {
         }
         confirmLabel="Unassign"
         confirmVariant="danger"
-        busy={busy}
+        busy={false}
         onCancel={() => setPendingAction(null)}
-        onConfirm={unassignTemp}
+        onConfirm={() => void unassignTemp()}
       />
 
       <Toast

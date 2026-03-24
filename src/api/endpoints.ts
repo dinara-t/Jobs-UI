@@ -9,14 +9,22 @@ import type {
   TempWithJobs,
 } from "./types";
 
+type JobSortBy = "date" | "name";
+type SortDir = "asc" | "desc";
+type TempSortBy = "id" | "name" | "jobCount";
+
 type ListJobsParams = {
   assigned?: boolean;
+  sortBy?: JobSortBy;
+  sortDir?: SortDir;
   page?: number;
   size?: number;
 };
 
 type ListTempsParams = {
   jobId?: number;
+  sortBy?: TempSortBy;
+  sortDir?: SortDir;
   page?: number;
   size?: number;
 };
@@ -31,13 +39,21 @@ export const api = {
 
   logout: () => http<void>("/auth/logout", { method: "POST", auth: false }),
 
-  listJobs: ({ assigned, page = 0, size = 10 }: ListJobsParams = {}) => {
+  listJobs: ({
+    assigned,
+    sortBy = "date",
+    sortDir = "asc",
+    page = 0,
+    size = 10,
+  }: ListJobsParams = {}) => {
     const params = new URLSearchParams();
 
     if (assigned !== undefined) {
       params.set("assigned", String(assigned));
     }
 
+    params.set("sortBy", sortBy);
+    params.set("sortDir", sortDir);
     params.set("page", String(page));
     params.set("size", String(size));
 
@@ -49,13 +65,21 @@ export const api = {
   patchJob: (id: number, patch: JobPatch) =>
     http<Job>(`/jobs/${id}`, { method: "PATCH", body: patch }),
 
-  listTemps: ({ jobId, page = 0, size = 10 }: ListTempsParams = {}) => {
+  listTemps: ({
+    jobId,
+    sortBy = "name",
+    sortDir = "asc",
+    page = 0,
+    size = 10,
+  }: ListTempsParams = {}) => {
     const params = new URLSearchParams();
 
     if (jobId !== undefined) {
       params.set("jobId", String(jobId));
     }
 
+    params.set("sortBy", sortBy);
+    params.set("sortDir", sortDir);
     params.set("page", String(page));
     params.set("size", String(size));
 

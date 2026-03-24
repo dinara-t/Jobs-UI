@@ -32,6 +32,7 @@ export type Temp = {
   lastName: string;
   email?: string;
   managerId?: number | null;
+  jobCount?: number;
 };
 
 export type TempUpdate = {

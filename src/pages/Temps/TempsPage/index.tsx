@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import styled from "styled-components";
 import { api } from "../../../api/endpoints";
 import type { PageResponse, Temp } from "../../../api/types";
+import { Pagination } from "../../../components/Pagination";
 import {
   Button,
   Card,
@@ -11,6 +12,7 @@ import {
   H2,
   Muted,
   Row,
+  Select,
   Spacer,
 } from "../../../components/Primitives";
 
@@ -29,14 +31,6 @@ const TempTitle = styled(Link)`
   }
 `;
 
-const Pager = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-`;
-
 const emptyPage: PageResponse<Temp> = {
   items: [],
   page: 0,
@@ -51,14 +45,22 @@ export function TempsPage() {
   const [pageData, setPageData] = useState<PageResponse<Temp>>(emptyPage);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<"id" | "name" | "jobCount">("name");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
   const size = 10;
 
   async function load() {
     setBusy(true);
     setError(null);
+
     try {
-      const data = await api.listTemps({ page, size });
+      const data = await api.listTemps({
+        sortBy,
+        sortDir,
+        page,
+        size,
+      });
       setPageData(data);
     } catch (err: any) {
       const msg =
@@ -72,54 +74,62 @@ export function TempsPage() {
   }
 
   useEffect(() => {
+    setPage(0);
+  }, [sortBy, sortDir]);
+
+  useEffect(() => {
     void load();
-  }, [page]);
+  }, [sortBy, sortDir, page]);
 
   return (
     <div>
-      <Row style={{ justifyContent: "space-between" }}>
+      <Row style={{ justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>
           <H1>Temps</H1>
           <Muted>Browse visible temps in your reporting tree.</Muted>
         </div>
 
-        <Button onClick={load} disabled={busy}>
-          {busy ? "Refreshing..." : "Refresh"}
-        </Button>
+        <Row style={{ alignItems: "flex-end" }}>
+          <div style={{ minWidth: 180 }}>
+            <Muted>Sort by</Muted>
+            <Spacer h={6} />
+            <Select
+              value={sortBy}
+              onChange={(e) =>
+                setSortBy(e.target.value as "id" | "name" | "jobCount")
+              }
+              disabled={busy}
+            >
+              <option value="name">Alphabetical</option>
+              <option value="id">ID</option>
+              <option value="jobCount">Jobs taken</option>
+            </Select>
+          </div>
+
+          <div style={{ minWidth: 160 }}>
+            <Muted>Direction</Muted>
+            <Spacer h={6} />
+            <Select
+              value={sortDir}
+              onChange={(e) => setSortDir(e.target.value as "asc" | "desc")}
+              disabled={busy}
+            >
+              <option value="asc">Ascending</option>
+              <option value="desc">Descending</option>
+            </Select>
+          </div>
+
+          <Button onClick={load} disabled={busy}>
+            {busy ? "Refreshing..." : "Refresh"}
+          </Button>
+        </Row>
       </Row>
 
       <Spacer h={16} />
 
-      <Card>
-        <Pager>
-          <Muted>
-            {busy
-              ? "Loading temps..."
-              : `Showing ${pageData.items.length} of ${pageData.totalItems} temps`}
-          </Muted>
-
-          <Row>
-            <Button
-              onClick={() => setPage((prev) => Math.max(prev - 1, 0))}
-              disabled={busy || !pageData.hasPrevious}
-            >
-              Previous
-            </Button>
-            <Button
-              onClick={() => setPage((prev) => prev + 1)}
-              disabled={busy || !pageData.hasNext}
-            >
-              Next
-            </Button>
-          </Row>
-        </Pager>
-
-        <Spacer h={8} />
-        <Muted>
-          Page {pageData.totalPages === 0 ? 0 : pageData.page + 1} of{" "}
-          {pageData.totalPages}
-        </Muted>
-      </Card>
+      <Muted>
+        {busy ? "Loading temps..." : `Showing ${pageData.totalItems} temps`}
+      </Muted>
 
       {error ? (
         <>
@@ -142,6 +152,8 @@ export function TempsPage() {
               </TempTitle>
             </H2>
             <Muted>Temp ID: {t.id}</Muted>
+            <Spacer h={4} />
+            <Muted>Jobs taken: {t.jobCount ?? 0}</Muted>
           </Card>
         ))}
       </List>
@@ -154,6 +166,17 @@ export function TempsPage() {
           </Card>
         </>
       ) : null}
+
+      <Spacer h={16} />
+
+      <Pagination
+        page={pageData.page}
+        totalPages={pageData.totalPages}
+        hasPrevious={pageData.hasPrevious}
+        hasNext={pageData.hasNext}
+        busy={busy}
+        onPageChange={setPage}
+      />
     </div>
   );
 }

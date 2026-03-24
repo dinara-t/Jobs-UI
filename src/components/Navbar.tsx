@@ -69,7 +69,7 @@ export function Navbar() {
   return (
     <Bar>
       <Inner>
-        <Brand to="/">Jobs UI</Brand>
+        <Brand to="/">Job Assignment</Brand>
         <Nav>
           {isAuthed ? (
             <>

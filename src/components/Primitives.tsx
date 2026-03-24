@@ -1,28 +1,36 @@
 import styled from "styled-components";
 
+export const Page = styled.div`
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+`;
+
 export const Card = styled.div`
   background: ${({ theme }) => theme.colors.card};
   border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: 16px;
-  padding: 16px;
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
 `;
 
 export const H1 = styled.h1`
-  font-size: 28px;
-  margin: 0 0 14px 0;
-  letter-spacing: -0.2px;
+  margin: 0;
+  font-size: clamp(28px, 5vw, 44px);
+  line-height: 1.1;
 `;
 
 export const H2 = styled.h2`
-  font-size: 18px;
-  margin: 0 0 10px 0;
+  margin: 0;
+  font-size: clamp(20px, 3vw, 28px);
+  line-height: 1.2;
 `;
 
 export const Row = styled.div`
   display: flex;
   gap: 12px;
-  flex-wrap: wrap;
   align-items: center;
+  flex-wrap: wrap;
 `;
 
 export const Spacer = styled.div<{ h?: number }>`
@@ -51,10 +59,12 @@ export const Select = styled.select`
   background: ${({ theme }) => theme.colors.input};
   color: ${({ theme }) => theme.colors.text};
   outline: none;
+
   option {
     background: #1e2433;
     color: ${({ theme }) => theme.colors.text};
   }
+
   &:focus {
     border-color: ${({ theme }) => theme.colors.primary};
   }
@@ -63,7 +73,12 @@ export const Select = styled.select`
 export const Button = styled.button<{
   $variant?: "primary" | "ghost" | "danger";
 }>`
-  border: 1px solid ${({ theme }) => theme.colors.border};
+  border: 1px solid ${({ theme, $variant }) =>
+    $variant === "primary"
+      ? theme.colors.primary
+      : $variant === "danger"
+        ? theme.colors.danger
+        : theme.colors.border};
   background: ${({ theme, $variant }) =>
     $variant === "primary"
       ? theme.colors.primary
@@ -76,19 +91,30 @@ export const Button = styled.button<{
       : $variant === "danger"
         ? theme.colors.dangerText
         : theme.colors.text};
-  border-color: ${({ theme, $variant }) =>
-    $variant === "primary"
-      ? theme.colors.primary
-      : $variant === "danger"
-        ? theme.colors.danger
-        : theme.colors.border};
   border-radius: 12px;
   padding: 10px 12px;
   font-weight: 700;
   cursor: pointer;
+  transition:
+    opacity 0.2s ease,
+    filter 0.2s ease,
+    transform 0.05s ease,
+    background 0.2s ease,
+    border-color 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 
-  &:active {
+  &:active:not(:disabled) {
     transform: translateY(1px);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+    filter: saturate(0.7);
   }
 `;
 
@@ -109,6 +135,6 @@ export const Grid = styled.div`
   gap: 12px;
 
   @media (min-width: 860px) {
-    grid-template-columns: 1.2fr 0.8fr;
+    grid-template-columns: 1fr 1fr;
   }
 `;

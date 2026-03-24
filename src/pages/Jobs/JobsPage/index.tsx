@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import styled from "styled-components";
 import { api } from "../../../api/endpoints";
 import type { Job, PageResponse } from "../../../api/types";
+import { Pagination } from "../../../components/Pagination";
 import {
   Button,
   Card,
@@ -37,14 +38,6 @@ const JobTitle = styled(Link)`
   }
 `;
 
-const Pager = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-`;
-
 function displayName(job: Job) {
   return job.title ?? job.name ?? `Job #${job.id}`;
 }
@@ -72,6 +65,8 @@ export function JobsPage() {
   const [assignedFilter, setAssignedFilter] = useState<
     "all" | "assigned" | "unassigned"
   >("all");
+  const [sortBy, setSortBy] = useState<"date" | "name">("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
   const size = 10;
 
@@ -83,9 +78,12 @@ export function JobsPage() {
   async function load() {
     setBusy(true);
     setError(null);
+
     try {
       const data = await api.listJobs({
         assigned: assignedParam,
+        sortBy,
+        sortDir,
         page,
         size,
       });
@@ -103,71 +101,76 @@ export function JobsPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [assignedParam]);
+  }, [assignedParam, sortBy, sortDir]);
 
   useEffect(() => {
     void load();
-  }, [assignedParam, page]);
+  }, [assignedParam, sortBy, sortDir, page]);
 
   return (
     <div>
-      <Row style={{ justifyContent: "space-between" }}>
+      <Row style={{ justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>
           <H1>Jobs</H1>
           <Muted>Browse jobs.</Muted>
         </div>
 
-        <div style={{ minWidth: 220 }}>
-          <Muted>Filter</Muted>
-          <Spacer h={6} />
-          <Select
-            value={assignedFilter}
-            onChange={(e) =>
-              setAssignedFilter(
-                e.target.value as "all" | "assigned" | "unassigned",
-              )
-            }
-            disabled={busy}
-          >
-            <option value="all">All visible jobs</option>
-            <option value="assigned">Assigned only</option>
-            <option value="unassigned">Unassigned only</option>
-          </Select>
-        </div>
+        <Row style={{ alignItems: "flex-end" }}>
+          <div style={{ minWidth: 220 }}>
+            <Muted>Filter</Muted>
+            <Spacer h={6} />
+            <Select
+              value={assignedFilter}
+              onChange={(e) =>
+                setAssignedFilter(
+                  e.target.value as "all" | "assigned" | "unassigned",
+                )
+              }
+              disabled={busy}
+            >
+              <option value="all">All visible jobs</option>
+              <option value="assigned">Assigned only</option>
+              <option value="unassigned">Unassigned only</option>
+            </Select>
+          </div>
+
+          <div style={{ minWidth: 180 }}>
+            <Muted>Sort by</Muted>
+            <Spacer h={6} />
+            <Select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as "date" | "name")}
+              disabled={busy}
+            >
+              <option value="date">Date</option>
+              <option value="name">Alphabetical</option>
+            </Select>
+          </div>
+
+          <div style={{ minWidth: 160 }}>
+            <Muted>Direction</Muted>
+            <Spacer h={6} />
+            <Select
+              value={sortDir}
+              onChange={(e) => setSortDir(e.target.value as "asc" | "desc")}
+              disabled={busy}
+            >
+              <option value="asc">Ascending</option>
+              <option value="desc">Descending</option>
+            </Select>
+          </div>
+
+          <Button onClick={load} disabled={busy}>
+            {busy ? "Refreshing..." : "Refresh"}
+          </Button>
+        </Row>
       </Row>
 
       <Spacer h={16} />
 
-      <Card>
-        <Pager>
-          <Muted>
-            {busy
-              ? "Loading jobs..."
-              : `Showing ${pageData.items.length} of ${pageData.totalItems} jobs`}
-          </Muted>
-
-          <Row>
-            <Button
-              onClick={() => setPage((prev) => Math.max(prev - 1, 0))}
-              disabled={busy || !pageData.hasPrevious}
-            >
-              Previous
-            </Button>
-            <Button
-              onClick={() => setPage((prev) => prev + 1)}
-              disabled={busy || !pageData.hasNext}
-            >
-              Next
-            </Button>
-          </Row>
-        </Pager>
-
-        <Spacer h={8} />
-        <Muted>
-          Page {pageData.totalPages === 0 ? 0 : pageData.page + 1} of{" "}
-          {pageData.totalPages}
-        </Muted>
-      </Card>
+      <Muted>
+        {busy ? "Loading jobs..." : `Showing ${pageData.totalItems} jobs`}
+      </Muted>
 
       {error ? (
         <>
@@ -211,6 +214,17 @@ export function JobsPage() {
           </Card>
         </>
       ) : null}
+
+      <Spacer h={16} />
+
+      <Pagination
+        page={pageData.page}
+        totalPages={pageData.totalPages}
+        hasPrevious={pageData.hasPrevious}
+        hasNext={pageData.hasNext}
+        busy={busy}
+        onPageChange={setPage}
+      />
     </div>
   );
 }

@@ -29,6 +29,10 @@ function assigned(job: Job) {
   return job.assignedTemp ?? job.temp;
 }
 
+function tempLabel(temp: Temp) {
+  return `${temp.firstName} ${temp.lastName} (#${temp.id}) - Jobs taken: ${temp.jobCount ?? 0}`;
+}
+
 export function JobDetailPage() {
   const { id } = useParams();
   const jobId = Number(id);
@@ -54,10 +58,21 @@ export function JobDetailPage() {
       setJob(j);
 
       try {
-        const available = await api.listTemps({ jobId, page: 0, size: 100 });
+        const available = await api.listTemps({
+          jobId,
+          sortBy: "jobCount",
+          sortDir: "asc",
+          page: 0,
+          size: 100,
+        });
         setTemps(available.items);
       } catch {
-        const all = await api.listTemps({ page: 0, size: 100 });
+        const all = await api.listTemps({
+          sortBy: "jobCount",
+          sortDir: "asc",
+          page: 0,
+          size: 100,
+        });
         setTemps(all.items);
       }
     } catch (err: any) {
@@ -206,7 +221,7 @@ export function JobDetailPage() {
                 <option value="">Select a temp</option>
                 {temps.map((x) => (
                   <option key={x.id} value={x.id}>
-                    {x.firstName} {x.lastName} (#{x.id})
+                    {tempLabel(x)}
                   </option>
                 ))}
               </Select>

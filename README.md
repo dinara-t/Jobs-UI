@@ -12,6 +12,9 @@ Built with React, TypeScript and Vite. The application allows users to log in, v
 - View temps in hierarchy
 - View assigned and unassigned jobs
 - Assign temps to jobs
+- Pagination (jobs and temps)
+- Sorting (jobs: date/name, temps: name/id/job count)
+- Assignment confirmation popups
 - Form validation using Zod
 - API integration with JWT-based authentication
 
@@ -76,9 +79,8 @@ sequenceDiagram
 
     U->>UI: Submit login form
     UI->>API: POST /auth/login
-    API-->>UI: JWT token
-    UI->>UI: Store token
-    UI->>API: Send request with JWT
+    API-->>UI: JWT token (cookie)
+    UI->>API: Authenticated request
     API-->>UI: Return jobs / temps / profile data
     UI-->>U: Render protected pages
 ```
@@ -117,9 +119,6 @@ Create a `.env` file:
 ## Example Login
 
 - `admin@example.com / admin12345`
-- `allan@example.com / allan12345`
-- `sam@example.com / sam12345`
-- `jamie@example.com / jamie12345`
 
 ## What the UI Supports
 
@@ -129,13 +128,3 @@ Create a `.env` file:
 - Viewing detailed temp and job pages
 - Assigning or unassigning temps from jobs
 - Updating the current user profile
-
-## Future Improvements
-
-- Add component tests with React Testing Library
-- Add end-to-end tests with Playwright
-- Improve loading states and error handling
-- Add pagination for larger datasets
-- Improve filtering and sorting
-- Add CI/CD pipeline
-- Deploy frontend to AWS S3 and CloudFront

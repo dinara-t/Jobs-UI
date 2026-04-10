@@ -3,7 +3,16 @@ export type LoginRequest = {
   password: string;
 };
 
-export type TempSummary = {
+export type Temp = {
+  id: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  managerId?: number | null;
+  jobCount?: number;
+};
+
+export type JobTemp = {
   id: number;
   firstName: string;
   lastName: string;
@@ -15,48 +24,32 @@ export type Job = {
   title?: string;
   startDate: string;
   endDate: string;
-  temp?: TempSummary | null;
-  assignedTemp?: TempSummary | null;
+  temp?: JobTemp | null;
+  assignedTemp?: JobTemp | null;
+};
+
+export type TempWithJobs = Temp & {
+  jobs: Array<{
+    id: number;
+    name: string;
+    startDate: string;
+    endDate: string;
+  }>;
+};
+
+export type TempUpdate = {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  password?: string;
+  managerId?: number | null;
 };
 
 export type JobPatch = {
   name?: string;
   startDate?: string;
   endDate?: string;
-  tempId?: number;
-};
-
-export type Temp = {
-  id: number;
-  firstName: string;
-  lastName: string;
-  email?: string;
-  managerId?: number | null;
-  jobCount?: number;
-};
-
-export type TempUpdate = {
-  firstName: string;
-  lastName: string;
-  email: string;
-  managerId?: number | null;
-  password?: string;
-};
-
-export type JobSummary = {
-  id: number;
-  name: string;
-  startDate: string;
-  endDate: string;
-};
-
-export type TempWithJobs = {
-  id: number;
-  firstName: string;
-  lastName: string;
-  email: string;
-  managerId?: number | null;
-  jobs: JobSummary[];
+  tempId?: number | null;
 };
 
 export type PageResponse<T> = {
@@ -72,11 +65,6 @@ export type PageResponse<T> = {
 export type ChatContext = {
   currentJobId?: number | null;
   lastSuggestedTempId?: number | null;
-};
-
-export type ChatRequest = {
-  message: string;
-  context?: ChatContext;
 };
 
 export type PendingAction =
@@ -120,9 +108,13 @@ export type ResolvedEntities = {
   usedLastSuggestedTempContext?: boolean;
 };
 
+export type ChatRequest = {
+  message: string;
+  context?: ChatContext;
+};
+
 export type ChatResponse = {
-  reply: string;
-  error?: string;
+  reply?: string;
   pendingAction?: PendingAction;
   suggestedActions?: AssistantAction[];
   clarificationPrompts?: ClarificationPrompt[];

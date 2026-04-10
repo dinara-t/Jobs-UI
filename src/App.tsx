@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
+import { AssistantWidget } from "./components/AssistantWidget";
 import { LoginPage } from "./pages/LoginPage";
 import { JobsPage } from "./pages/Jobs/JobsPage";
 import { JobDetailPage } from "./pages/Jobs/JobDetailPage";
@@ -9,6 +10,17 @@ import { ProfilePage } from "./pages/ProfilePage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { RequireAuth } from "./state/RequireAuth";
 import { useAuth } from "./state/AuthContext";
+
+function ProtectedPage({ children }: { children: React.ReactNode }) {
+  return (
+    <RequireAuth>
+      <>
+        {children}
+        <AssistantWidget />
+      </>
+    </RequireAuth>
+  );
+}
 
 export function App() {
   const { isAuthed, isReady } = useAuth();
@@ -32,43 +44,45 @@ export function App() {
         <Route
           path="/profile"
           element={
-            <RequireAuth>
+            <ProtectedPage>
               <ProfilePage />
-            </RequireAuth>
+            </ProtectedPage>
           }
         />
 
         <Route
           path="/jobs"
           element={
-            <RequireAuth>
+            <ProtectedPage>
               <JobsPage />
-            </RequireAuth>
+            </ProtectedPage>
           }
         />
+
         <Route
           path="/jobs/:id"
           element={
-            <RequireAuth>
+            <ProtectedPage>
               <JobDetailPage />
-            </RequireAuth>
+            </ProtectedPage>
           }
         />
 
         <Route
           path="/temps"
           element={
-            <RequireAuth>
+            <ProtectedPage>
               <TempsPage />
-            </RequireAuth>
+            </ProtectedPage>
           }
         />
+
         <Route
           path="/temps/:id"
           element={
-            <RequireAuth>
+            <ProtectedPage>
               <TempDetailPage />
-            </RequireAuth>
+            </ProtectedPage>
           }
         />
 

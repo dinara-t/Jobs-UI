@@ -1,5 +1,6 @@
-import { http } from "./http";
 import type {
+  ChatRequest,
+  ChatResponse,
   Job,
   JobPatch,
   LoginRequest,
@@ -9,90 +10,121 @@ import type {
   TempWithJobs,
 } from "./types";
 
-type JobSortBy = "date" | "name";
-type SortDir = "asc" | "desc";
-type TempSortBy = "id" | "name" | "jobCount";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
+const MCP_BASE_URL = import.meta.env.VITE_MCP_BASE_URL ?? "http://localhost:3000";
 
-type ListJobsParams = {
-  assigned?: boolean;
-  sortBy?: JobSortBy;
-  sortDir?: SortDir;
-  page?: number;
-  size?: number;
-};
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  baseUrl: string = API_BASE_URL,
+): Promise<T> {
+  const response = await fetch(`${baseUrl}${path}`, {
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+    ...init,
+  });
 
-type ListTempsParams = {
-  jobId?: number;
-  sortBy?: TempSortBy;
-  sortDir?: SortDir;
-  page?: number;
-  size?: number;
-};
+  if (!response.ok) {
+    let errorMessage = `Request failed with status ${response.status}`;
+
+    try {
+      const errorBody = (await response.json()) as { error?: string; message?: string };
+      errorMessage = errorBody.message ?? errorBody.error ?? errorMessage;
+    } catch {
+      //
+    }
+
+    throw new Error(errorMessage);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return (await response.json()) as T;
+}
 
 export const api = {
   login: (payload: LoginRequest) =>
-    http<void>("/auth/login", {
+    request<void>("/auth/login", {
       method: "POST",
-      body: payload,
-      auth: false,
+      body: JSON.stringify(payload),
     }),
 
-  logout: () => http<void>("/auth/logout", { method: "POST", auth: false }),
+  logout: () =>
+    request<void>("/auth/logout", {
+      method: "POST",
+    }),
 
-  listJobs: ({
-    assigned,
-    sortBy = "date",
-    sortDir = "asc",
-    page = 0,
-    size = 10,
-  }: ListJobsParams = {}) => {
-    const params = new URLSearchParams();
-
-    if (assigned !== undefined) {
-      params.set("assigned", String(assigned));
-    }
-
-    params.set("sortBy", sortBy);
-    params.set("sortDir", sortDir);
-    params.set("page", String(page));
-    params.set("size", String(size));
-
-    return http<PageResponse<Job>>(`/jobs?${params.toString()}`);
-  },
-
-  getJob: (id: number) => http<Job>(`/jobs/${id}`),
-
-  patchJob: (id: number, patch: JobPatch) =>
-    http<Job>(`/jobs/${id}`, { method: "PATCH", body: patch }),
-
-  listTemps: ({
-    jobId,
-    sortBy = "name",
-    sortDir = "asc",
-    page = 0,
-    size = 10,
-  }: ListTempsParams = {}) => {
-    const params = new URLSearchParams();
-
-    if (jobId !== undefined) {
-      params.set("jobId", String(jobId));
-    }
-
-    params.set("sortBy", sortBy);
-    params.set("sortDir", sortDir);
-    params.set("page", String(page));
-    params.set("size", String(size));
-
-    return http<PageResponse<Temp>>(`/temps?${params.toString()}`);
-  },
-
-  getTemp: (id: number) => http<TempWithJobs>(`/temps/${id}`),
-
-  getProfile: () => http<Temp>("/profile"),
+  getProfile: () =>
+    request<Temp>("/profile"),
 
   patchProfile: (payload: TempUpdate) =>
-    http<Temp>("/profile", {
+    request<Temp>("/profile", {
       method: "PATCH",
-      body: payload,
+      body: JSON.stringify(payload),
     }),
+
+  listJobs: (params: {
+    assigned?: boolean;
+    sortBy: "date" | "name";
+    sortDir: "asc" | "desc";
+    page: number;
+    size: number;
+  }) => {
+    const search = new URLSearchParams();
+    if (typeof params.assigned === "boolean") {
+      search.set("assigned", String(params.assigned));
+    }
+    search.set("sortBy", params.sortBy);
+    search.set("sortDir", params.sortDir);
+    search.set("page", String(params.page));
+    search.set("size", String(params.size));
+
+    return request<PageResponse<Job>>(`/jobs?${search.toString()}`);
+  },
+
+  getJob: (id: number) =>
+    request<Job>(`/jobs/${id}`),
+
+  patchJob: (id: number, payload: JobPatch) =>
+    request<Job>(`/jobs/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  listTemps: (params: {
+    jobId?: number;
+    sortBy: "id" | "name" | "jobCount";
+    sortDir: "asc" | "desc";
+    page: number;
+    size: number;
+  }) => {
+    const search = new URLSearchParams();
+    if (typeof params.jobId === "number") {
+      search.set("jobId", String(params.jobId));
+    }
+    search.set("sortBy", params.sortBy);
+    search.set("sortDir", params.sortDir);
+    search.set("page", String(params.page));
+    search.set("size", String(params.size));
+
+    return request<PageResponse<Temp>>(`/temps?${search.toString()}`);
+  },
+
+  getTemp: (id: number) =>
+    request<TempWithJobs>(`/temps/${id}`),
+
+  chat: (payload: ChatRequest) =>
+    request<ChatResponse>(
+      "/chat",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+      MCP_BASE_URL,
+    ),
 };

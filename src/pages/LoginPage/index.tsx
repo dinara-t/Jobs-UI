@@ -123,7 +123,7 @@ export function LoginPage() {
 
       <Muted>
         Use a temp email and password from the seeded data, for example
-        admin@example.com / admin12345.
+        admin@example.com / admin12345
       </Muted>
     </Wrap>
   );

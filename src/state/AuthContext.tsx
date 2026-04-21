@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext } from "react";
+import React, { createContext, useCallback, useContext, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/endpoints";
 import type { LoginRequest, Temp } from "../api/types";
@@ -18,6 +18,11 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    void api.initCsrf().catch(() => {
+    });
+  }, []);
+
   const profileQuery = useQuery<Temp>({
     queryKey: queryKeys.profile,
     queryFn: () => api.getProfile(),
@@ -34,12 +39,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   const refreshSession = useCallback(async () => {
+    await api.initCsrf().catch(() => {
+    });
     await profileQuery.refetch();
   }, [profileQuery]);
 
   const login = useCallback(
     async (req: LoginRequest) => {
       await loginMutation.mutateAsync(req);
+      await api.initCsrf();
+
       await queryClient.fetchQuery({
         queryKey: queryKeys.profile,
         queryFn: () => api.getProfile(),
@@ -77,6 +86,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("AuthContext missing");
+
+  if (!ctx) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+
   return ctx;
 }

@@ -9,25 +9,18 @@ import { Pagination } from "../../../components/Pagination";
 import {
   Button,
   Card,
+  ErrorText,
   H1,
   H2,
   Muted,
   Row,
-  Spacer,
   Select,
-  ErrorText,
+  Spacer,
 } from "../../../components/Primitives";
 import { queryKeys } from "../../../query/queryKeys";
 
 const List = styled.div`
   display: grid;
-  gap: 12px;
-`;
-
-const JobLine = styled.div`
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
   gap: 12px;
 `;
 
@@ -41,15 +34,11 @@ const JobTitle = styled(Link)`
   }
 `;
 
-function displayName(job: Job) {
-  return job.title ?? job.name ?? `Job #${job.id}`;
-}
-
-function assignedName(job: Job) {
-  const t = job.assignedTemp ?? job.temp;
-  if (!t) return "Unassigned";
-  return `${t.firstName} ${t.lastName}`;
-}
+const JobLine = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+`;
 
 const emptyPage: PageResponse<Job> = {
   items: [],
@@ -62,9 +51,7 @@ const emptyPage: PageResponse<Job> = {
 };
 
 export function JobsPage() {
-  const [assignedFilter, setAssignedFilter] = useState<
-    "all" | "assigned" | "unassigned"
-  >("all");
+  const [assignedFilter, setAssignedFilter] = useState<"all" | "unassigned" | "assigned">("all");
   const [sortBy, setSortBy] = useState<"date" | "name">("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
@@ -74,23 +61,23 @@ export function JobsPage() {
     setPage(0);
   }, [assignedFilter, sortBy, sortDir]);
 
-  const assignedParam =
-    assignedFilter === "all" ? undefined : assignedFilter === "assigned";
-
   const params = useMemo(
     () => ({
-      assigned: assignedParam,
+      assigned:
+        assignedFilter === "all"
+          ? undefined
+          : assignedFilter === "assigned",
       sortBy,
       sortDir,
       page,
       size,
     }),
-    [assignedParam, sortBy, sortDir, page],
+    [assignedFilter, sortBy, sortDir, page],
   );
 
   const jobsQuery = useQuery({
     queryKey: queryKeys.jobs(params),
-    queryFn: () => api.listJobs(params),
+    queryFn: () => api.getJobs(params),
     placeholderData: keepPreviousData,
   });
 
@@ -102,60 +89,59 @@ export function JobsPage() {
 
   return (
     <div>
-      <Row style={{ justifyContent: "space-between", alignItems: "flex-end" }}>
+      <Row style={{ justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap" }}>
         <div>
           <H1>Jobs</H1>
           <Muted>Browse jobs.</Muted>
         </div>
 
-        <Row style={{ alignItems: "flex-end" }}>
-          <div style={{ minWidth: 220 }}>
+        <Row style={{ flexWrap: "wrap" }}>
+          <div>
             <Muted>Filter</Muted>
             <Spacer h={6} />
             <Select
               value={assignedFilter}
               onChange={(e) =>
-                setAssignedFilter(
-                  e.target.value as "all" | "assigned" | "unassigned",
-                )
+                setAssignedFilter(e.target.value as "all" | "unassigned" | "assigned")
               }
-              disabled={busy}
             >
               <option value="all">All visible jobs</option>
-              <option value="assigned">Assigned only</option>
               <option value="unassigned">Unassigned only</option>
+              <option value="assigned">Assigned only</option>
             </Select>
           </div>
 
-          <div style={{ minWidth: 180 }}>
+          <div>
             <Muted>Sort by</Muted>
             <Spacer h={6} />
             <Select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as "date" | "name")}
-              disabled={busy}
             >
               <option value="date">Date</option>
-              <option value="name">Alphabetical</option>
+              <option value="name">Name</option>
             </Select>
           </div>
 
-          <div style={{ minWidth: 160 }}>
+          <div>
             <Muted>Direction</Muted>
             <Spacer h={6} />
             <Select
               value={sortDir}
               onChange={(e) => setSortDir(e.target.value as "asc" | "desc")}
-              disabled={busy}
             >
               <option value="asc">Ascending</option>
               <option value="desc">Descending</option>
             </Select>
           </div>
 
-          <Button onClick={() => void jobsQuery.refetch()} disabled={busy}>
-            {busy ? "Refreshing..." : "Refresh"}
-          </Button>
+          <div>
+            <Muted>&nbsp;</Muted>
+            <Spacer h={6} />
+            <Button onClick={() => void jobsQuery.refetch()} disabled={busy}>
+              {busy ? "Refreshing..." : "Refresh"}
+            </Button>
+          </div>
         </Row>
       </Row>
 
@@ -177,23 +163,21 @@ export function JobsPage() {
       <Spacer h={12} />
 
       <List>
-        {pageData.items.map((job) => (
+        {pageData.items.map((job: Job) => (
           <Card key={job.id}>
-            <JobLine>
-              <div>
-                <H2 style={{ marginBottom: 6 }}>
-                  <JobTitle to={`/jobs/${job.id}`}>{displayName(job)}</JobTitle>
-                </H2>
-                <Muted>
-                  Dates: {job.startDate} → {job.endDate}
-                </Muted>
-                <Spacer h={4} />
-                <Muted>Assigned: {assignedName(job)}</Muted>
-              </div>
+            <H2 style={{ marginBottom: 6 }}>
+              <JobTitle to={`/jobs/${job.id}`}>{job.name}</JobTitle>
+            </H2>
 
-              <Button as={Link as any} to={`/jobs/${job.id}`}>
-                View
-              </Button>
+            <JobLine>
+              <Muted>Job ID: {job.id}</Muted>
+              <Muted>
+                Dates: {job.startDate} → {job.endDate}
+              </Muted>
+              <Muted>
+                Assigned to:{" "}
+                {job.temp ? `${job.temp.firstName} ${job.temp.lastName}` : "Unassigned"}
+              </Muted>
             </JobLine>
           </Card>
         ))}

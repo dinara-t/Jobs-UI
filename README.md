@@ -1,130 +1,157 @@
 # Jobs UI
 
-Frontend application for the Job Assignment System.
+React + TypeScript frontend for the Jobs Application. It provides the browser interface for login, profile management, jobs, temps, assignment workflows, and the assistant widget.
 
-Built with React, TypeScript and Vite. The application allows users to log in, view jobs and temps within their hierarchy, update their profile, and assign temps to jobs through the backend API.
+## Tech stack
 
-## Features
+- Vite
+- React 18
+- TypeScript
+- React Router
+- TanStack React Query
+- React Hook Form
+- Zod
+- styled-components
+- Vitest
+- Testing Library
 
-- Secure login
-- Protected routes
-- Profile management
-- View temps in hierarchy
-- View assigned and unassigned jobs
-- Assign temps to jobs
-- Pagination (jobs and temps)
-- Sorting (jobs: date/name, temps: name/id/job count)
-- Assignment confirmation popups
-- Form validation using Zod
-- API integration with JWT-based authentication
+## Main features
 
-## Architecture
+- Login and logout.
+- Protected routes after authentication.
+- Current profile display and edit form.
+- Jobs list with assigned/unassigned filter, sorting, pagination, and detail links.
+- Job detail page with assign and unassign actions.
+- Temps list with sorting, pagination, and detail links.
+- Temp detail page showing assigned jobs.
+- API error message handling.
+- CSRF token loading and automatic retry after CSRF-related 403 responses.
+- Assistant widget connected to the MCP server.
+- Query invalidation after successful assignment and unassignment.
 
-```mermaid
-flowchart LR
-    U[User Browser]
-    UI[React Application]
-    RC[React Context State]
-    API[Spring Boot API]
-    DB[(MySQL Database)]
+## Prerequisites
 
-    U --> UI
-    UI --> RC
-    UI -->|REST API| API
-    API --> DB
+- Node.js 18 or newer
+- Jobs API running on `http://localhost:8080`
+- Jobs MCP Server running on `http://localhost:3000` if using the assistant widget
+
+## Environment variables
+
+Create a `.env` file in the UI project root:
+
+```properties
+VITE_API_BASE_URL=http://localhost:8080
+VITE_MCP_BASE_URL=http://localhost:3000
 ```
 
-The React application communicates with the backend using REST endpoints.  
-Authentication state is managed on the frontend and protected routes prevent unauthorised access.
+## Install and run
 
-## Tech Stack
+From the UI project folder:
 
-React  
-TypeScript  
-Vite  
-React Router  
-Styled Components  
-React Hook Form  
-Zod Validation
-
-## Project Structure
-
-    src
-    ├── api
-    ├── components
-    ├── pages
-    ├── state
-    ├── styles
-    ├── App.tsx
-    └── main.tsx
-
-## Frontend Page Flow
-
-```mermaid
-flowchart TD
-    L[Login Page] --> J[Jobs Page]
-    L --> T[Temps Page]
-    L --> P[Profile Page]
-    T --> TD[Temp Detail Page]
-    J --> JD[Job Detail Page]
+```bash
+npm install
+npm run dev
 ```
 
-## JWT Request Flow
+The UI runs on:
 
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant UI as React UI
-    participant API as Jobs API
-
-    U->>UI: Submit login form
-    UI->>API: POST /auth/login
-    API-->>UI: JWT token (cookie)
-    UI->>API: Authenticated request
-    API-->>UI: Return jobs / temps / profile data
-    UI-->>U: Render protected pages
+```text
+http://localhost:5173
 ```
 
-## Routes
+## Scripts
 
-- `/login`
-- `/profile`
-- `/temps`
-- `/temps/:id`
-- `/jobs`
-- `/jobs/:id`
+```bash
+npm run dev
+npm run build
+npm run preview
+npm test
+npm run test:watch
+```
 
-All routes except `/login` require authentication.
+## Auth and request behaviour
 
-## Running the Frontend
+The UI sends requests with `credentials: "include"` so the browser includes the JWT cookie issued by the API. For unsafe methods, the UI fetches `/csrf/csrf-token`, caches the token, and sends it in the CSRF header returned by the API.
 
-Install dependencies:
+Unsafe methods include:
 
-    npm install
+- `POST`
+- `PUT`
+- `PATCH`
+- `DELETE`
 
-Start the development server:
+If an unsafe request receives a 403 that looks like a CSRF failure, the UI refreshes the CSRF token and retries once.
 
-    npm run dev
+## Main pages
 
-Application runs at:
+| Route | Purpose |
+|---|---|
+| `/login` | Login form |
+| `/profile` | Current user profile |
+| `/temps` | Visible temps list |
+| `/temps/:id` | Temp detail and assigned jobs |
+| `/jobs` | Visible jobs list |
+| `/jobs/:id` | Job detail and assignment controls |
 
-    http://localhost:5173
+## Assistant widget
 
-## Environment Variables
+The assistant widget is available after login. It can:
 
-Create a `.env` file:
+- Show job details.
+- Show temp details.
+- List available temps for a job.
+- Suggest the best available temp for a job.
+- Explain whether a temp is available for a job.
+- Ask for clarification when a job or temp name is ambiguous.
+- Show action chips.
+- Open confirmation prompts before assigning or unassigning.
 
-    VITE_API_BASE_URL=http://localhost:8080
+The widget sends chat requests to:
 
-## Example Login
+```text
+POST http://localhost:3000/chat
+```
 
-- `admin@example.com / admin12345`
+It includes current job context when the user is viewing `/jobs/:id` and tracks the last suggested temp so follow-up messages such as “assign them” can work.
 
-## What the UI Supports
+## API client methods
 
-- Login and authentication
-- Viewing jobs visible to the logged-in user
-- Viewing temps visible to the logged-in user
-- Viewing detailed temp and job pages
-- Assigning or unassigning temps from jobs
-- Updating the current user profile
+The UI API client includes methods for:
+
+- `login`
+- `logout`
+- `getProfile`
+- `updateProfile`
+- `getJobs`
+- `getJob`
+- `patchJob`
+- `getTemps`
+- `getTemp`
+- `sendChatMessage`
+
+## Testing
+
+Run:
+
+```bash
+npm test
+```
+
+## Troubleshooting
+
+### Login works but later requests are unauthorised
+
+Check that the API and UI origins match the CORS configuration and that the browser is allowed to store/send the JWT cookie.
+
+### Assign or unassign returns 403
+
+Check that the UI loaded a CSRF token and that the API has `CORS_ALLOWED_ORIGINS=http://localhost:5173`.
+
+### Assistant actions fail
+
+Check:
+
+- MCP server is running on port `3000`.
+- `VITE_MCP_BASE_URL` points to the MCP server.
+- MCP `JOBS_API_BASE_URL` points to the API.
+- Browser requests include cookies.

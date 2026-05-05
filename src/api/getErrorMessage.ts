@@ -2,6 +2,8 @@ import { HttpError } from "./http";
 
 type ErrorBody = {
   message?: string;
+  reply?: string;
+  error?: string;
 };
 
 export function getErrorMessage(error: unknown, fallback: string) {
@@ -11,7 +13,7 @@ export function getErrorMessage(error: unknown, fallback: string) {
     }
 
     const body = error.body as ErrorBody | null;
-    return body?.message ?? fallback;
+    return body?.message ?? body?.reply ?? body?.error ?? error.message ?? fallback;
   }
 
   if (error instanceof Error && error.message) {

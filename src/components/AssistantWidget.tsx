@@ -131,13 +131,15 @@ const Messages = styled.div`
 `;
 
 const Bubble = styled.div<{ $role: "assistant" | "user" }>`
-  justify-self: ${({ $role }) => ($role === "user" ? "end" : "start")};
-  max-width: 88%;
+  justify-self: ${({ $role }) =>
+    $role === "user" ? "end" : "start"};
+  max-width: 92%;
+  border-radius: 18px;
   padding: 12px 14px;
-  border-radius: 16px;
   white-space: pre-wrap;
-  word-break: break-word;
-  border: 1px solid ${({ theme }) => theme.colors.border};
+  line-height: 1.45;
+  border: 1px solid ${({ theme, $role }) =>
+    $role === "user" ? theme.colors.primary : theme.colors.border};
   background: ${({ theme, $role }) =>
     $role === "user" ? theme.colors.primary : theme.colors.card};
   color: ${({ theme, $role }) =>
@@ -146,8 +148,8 @@ const Bubble = styled.div<{ $role: "assistant" | "user" }>`
 
 const Chips = styled.div`
   display: flex;
-  gap: 8px;
   flex-wrap: wrap;
+  gap: 8px;
   margin-top: 10px;
 `;
 
@@ -156,13 +158,12 @@ const ChipButton = styled.button`
   background: ${({ theme }) => theme.colors.bgElevated};
   color: ${({ theme }) => theme.colors.text};
   border-radius: 999px;
-  padding: 8px 12px;
+  padding: 7px 11px;
   font-size: 0.78rem;
-  font-weight: 700;
   cursor: pointer;
 
   &:disabled {
-    opacity: 0.6;
+    opacity: 0.65;
     cursor: default;
   }
 `;
@@ -171,17 +172,19 @@ const Composer = styled.form`
   padding: 14px 16px 16px;
   border-top: 1px solid ${({ theme }) => theme.colors.border};
   display: grid;
+  grid-template-columns: 1fr auto;
   gap: 10px;
 `;
 
 const SendButton = styled.button`
-  min-height: 44px;
-  border: 1px solid ${({ theme }) => theme.colors.border};
+  min-width: 96px;
+  border: 0;
+  border-radius: 14px;
   background: ${({ theme }) => theme.colors.primary};
   color: ${({ theme }) => theme.colors.primaryText};
-  border-radius: 12px;
   font-weight: 800;
   cursor: pointer;
+  padding: 0 16px;
 
   &:disabled {
     opacity: 0.7;
@@ -189,7 +192,9 @@ const SendButton = styled.button`
   }
 `;
 
-let nextId = 1;
+const Footer = styled.div`
+  padding: 0 16px 14px;
+`;
 
 function makeMessage(
   role: "assistant" | "user",
@@ -198,7 +203,7 @@ function makeMessage(
   clarificationPrompts?: ClarificationPrompt[],
 ): ChatMessage {
   return {
-    id: nextId++,
+    id: Date.now() + Math.floor(Math.random() * 100000),
     role,
     text,
     suggestedActions,
@@ -206,7 +211,17 @@ function makeMessage(
   };
 }
 
-function toConfirmMessage(action: PendingAction): string {
+function extractSuggestedTempId(reply: string): number | null {
+  const match = reply.match(/\btemp\s+#?(\d+)\b/i);
+  if (!match) {
+    return null;
+  }
+
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toConfirmMessage(action: PendingAction) {
   if (action.type === "assign_temp_to_job") {
     return `__confirm_assign__ temp ${action.tempId} to job ${action.jobId}`;
   }
@@ -214,89 +229,36 @@ function toConfirmMessage(action: PendingAction): string {
   return `__confirm_unassign__ job ${action.jobId}`;
 }
 
-function extractSuggestedTempId(text: string): number | null {
-  const directMatch = text.match(/\(Temp\s+(\d+)\)/i);
-  if (directMatch) {
-    return Number(directMatch[1]);
-  }
-
-  const fallbackMatch = text.match(/\bTemp\s+(\d+)\b/i);
-  if (fallbackMatch) {
-    return Number(fallbackMatch[1]);
-  }
-
-  return null;
-}
-
 export function AssistantWidget() {
-  const queryClient = useQueryClient();
   const { isAuthed } = useAuth();
+  const queryClient = useQueryClient();
   const location = useLocation();
-  const jobRouteMatch = useMatch("/jobs/:id");
+  const match = useMatch("/jobs/:id");
 
   const currentJobId = useMemo(() => {
-    const raw = jobRouteMatch?.params.id;
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  }, [jobRouteMatch]);
-
-  const initialAssistantText = useMemo(() => {
-    if (currentJobId) {
-      return [
-        `You are viewing job ${currentJobId}.`,
-        `Try one of these:`,
-        `- Show details for this job`,
-        `- Show available temps for this job`,
-        `- Suggest the best temp for this job`,
-        `- Why is temp 5 unavailable for this job?`,
-        `- Assign temp 5 here`,
-        `- Assign them`,
-      ].join("\n");
+    const raw = match?.params?.id;
+    if (!raw) {
+      return null;
     }
 
-    return [
-      "I can help with jobs and temps.",
-      "Try one of these:",
-      "- Show job 12 details",
-      "- Show temp 5 details",
-      "- Show available temps for job 12",
-      "- Suggest the best temp for job 12",
-      "- Why is temp 5 unavailable for job 12?",
-    ].join("\n");
-  }, [currentJobId]);
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [match?.params?.id]);
+
+  const initialAssistantText = currentJobId
+    ? `You are viewing job ${currentJobId}. Ask me to show job details, available temps, suggest the best temp, assign a temp, or unassign the current temp.`
+    : "Ask me about jobs and temps. I can show details, suggest the best temp, check availability, assign, or unassign.";
 
   const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    makeMessage("assistant", initialAssistantText),
+  ]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
-  const [lastSuggestedTempId, setLastSuggestedTempId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    makeMessage(
-      "assistant",
-      initialAssistantText,
-      currentJobId
-        ? [
-            {
-              type: "send_message",
-              label: "Show job details",
-              message: "Show details for this job",
-            },
-            {
-              type: "send_message",
-              label: "Show available temps",
-              message: "Show available temps for this job",
-            },
-            {
-              type: "send_message",
-              label: "Suggest best temp",
-              message: "Suggest the best temp for this job",
-            },
-          ]
-        : undefined,
-    ),
-  ]);
+  const [lastSuggestedTempId, setLastSuggestedTempId] = useState<number | null>(null);
 
   const messagesRef = useRef<HTMLDivElement | null>(null);
 
@@ -440,6 +402,7 @@ export function AssistantWidget() {
       await invalidateRelatedData();
     } catch (err) {
       const friendly = getErrorMessage(err, "Failed to complete assistant action");
+      setPendingAction(null);
       setError(friendly);
       setMessages((prev) => [
         ...prev,
@@ -459,132 +422,134 @@ export function AssistantWidget() {
     await sendMessage(action.message);
   }
 
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await sendMessage(input);
   }
 
-  const quickMessages = currentJobId
-    ? [
-        "Show details for this job",
-        "Show available temps for this job",
-        "Suggest the best temp for this job",
-        "Why is temp 5 unavailable for this job?",
-        "Assign them",
-      ]
-    : [
-        "Show job 12 details",
-        "Show temp 5 details",
-        "Show available temps for job 12",
-        "Why is temp 5 unavailable for job 12?",
-      ];
-
   return (
-    <>
-      <Shell>
-        {open ? (
-          <Panel>
-            <Header>
-              <TitleWrap>
-                <Title>Assistant</Title>
-                <Subtitle>
-                  {currentJobId
-                    ? `Context: job ${currentJobId}`
-                    : "Global jobs assistant"}
-                </Subtitle>
-              </TitleWrap>
+    <Shell>
+      {!open ? (
+        <Launcher type="button" onClick={() => setOpen(true)}>
+          Open assistant
+        </Launcher>
+      ) : (
+        <Panel>
+          <Header>
+            <TitleWrap>
+              <Title>Assistant</Title>
+              <Subtitle>
+                {currentJobId
+                  ? `Scoped to job ${currentJobId}`
+                  : "Use chat to explore jobs and temps"}
+              </Subtitle>
+            </TitleWrap>
 
-              <HeaderActions>
-                <IconButton
-                  type="button"
-                  aria-label="Minimise assistant"
-                  onClick={() => setOpen(false)}
-                >
-                  —
-                </IconButton>
-              </HeaderActions>
-            </Header>
+            <HeaderActions>
+              <IconButton type="button" onClick={() => setOpen(false)}>
+                ×
+              </IconButton>
+            </HeaderActions>
+          </Header>
 
-            <QuickActions>
-              {quickMessages.map((message) => (
+          <QuickActions>
+            {currentJobId ? (
+              <>
                 <QuickButton
-                  key={message}
                   type="button"
-                  disabled={
-                    busy ||
-                    confirmBusy ||
-                    (message === "Assign them" && lastSuggestedTempId == null)
-                  }
-                  onClick={() => void sendMessage(message)}
+                  disabled={busy || confirmBusy}
+                  onClick={() => void sendMessage("Show details for this job")}
                 >
-                  {message.length > 24 ? `${message.slice(0, 24)}…` : message}
+                  Job details
                 </QuickButton>
-              ))}
-            </QuickActions>
+                <QuickButton
+                  type="button"
+                  disabled={busy || confirmBusy}
+                  onClick={() => void sendMessage("Show available temps for this job")}
+                >
+                  Available temps
+                </QuickButton>
+                <QuickButton
+                  type="button"
+                  disabled={busy || confirmBusy}
+                  onClick={() => void sendMessage("Suggest the best temp for this job")}
+                >
+                  Best temp
+                </QuickButton>
+              </>
+            ) : (
+              <>
+                <QuickButton
+                  type="button"
+                  disabled={busy || confirmBusy}
+                  onClick={() => void sendMessage("Show jobs")}
+                >
+                  Jobs
+                </QuickButton>
+                <QuickButton
+                  type="button"
+                  disabled={busy || confirmBusy}
+                  onClick={() => void sendMessage("Show temps")}
+                >
+                  Temps
+                </QuickButton>
+              </>
+            )}
+          </QuickActions>
 
-            <Messages ref={messagesRef}>
-              {messages.map((message) => (
-                <Bubble key={message.id} $role={message.role}>
-                  {message.text}
+          <Messages ref={messagesRef}>
+            {messages.map((message) => (
+              <div key={message.id}>
+                <Bubble $role={message.role}>{message.text}</Bubble>
 
-                  {message.role === "assistant" &&
-                  ((message.suggestedActions?.length ?? 0) > 0 ||
-                    (message.clarificationPrompts?.length ?? 0) > 0) ? (
-                    <Chips>
-                      {message.suggestedActions?.map((action, index) => (
-                        <ChipButton
-                          key={`${message.id}-action-${index}-${action.label}`}
-                          type="button"
-                          disabled={busy || confirmBusy}
-                          onClick={() => void runAssistantAction(action)}
-                        >
-                          {action.label}
-                        </ChipButton>
-                      ))}
+                {message.suggestedActions?.length ? (
+                  <Chips>
+                    {message.suggestedActions.map((action, index) => (
+                      <ChipButton
+                        key={`${message.id}-action-${index}`}
+                        type="button"
+                        disabled={busy || confirmBusy}
+                        onClick={() => void runAssistantAction(action)}
+                      >
+                        {action.label}
+                      </ChipButton>
+                    ))}
+                  </Chips>
+                ) : null}
 
-                      {message.clarificationPrompts?.map((prompt) => (
-                        <ChipButton
-                          key={`${message.id}-prompt-${prompt.id}`}
-                          type="button"
-                          disabled={busy || confirmBusy}
-                          onClick={() => void sendMessage(prompt.message)}
-                        >
-                          {prompt.label}
-                        </ChipButton>
-                      ))}
-                    </Chips>
-                  ) : null}
-                </Bubble>
-              ))}
-            </Messages>
+                {message.clarificationPrompts?.length ? (
+                  <Chips>
+                    {message.clarificationPrompts.map((prompt) => (
+                      <ChipButton
+                        key={prompt.id}
+                        type="button"
+                        disabled={busy || confirmBusy}
+                        onClick={() => void sendMessage(prompt.message)}
+                      >
+                        {prompt.label}
+                      </ChipButton>
+                    ))}
+                  </Chips>
+                ) : null}
+              </div>
+            ))}
+          </Messages>
 
-            <Composer onSubmit={(event) => void onSubmit(event)}>
-              <Input
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                placeholder={
-                  currentJobId
-                    ? `Ask about job ${currentJobId}`
-                    : "Ask about jobs or temps"
-                }
-                disabled={busy || confirmBusy}
-              />
-              <SendButton type="submit" disabled={busy || confirmBusy || !input.trim()}>
-                {busy ? "Sending..." : "Send"}
-              </SendButton>
-              {error ? <ErrorText>{error}</ErrorText> : null}
-            </Composer>
-          </Panel>
-        ) : (
-          <Launcher
-            type="button"
-            aria-label="Open assistant"
-            onClick={() => setOpen(true)}
-          >
-            Assistant
-          </Launcher>
-        )}
-      </Shell>
+          <Composer onSubmit={(event) => void handleSubmit(event)}>
+            <Input
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              placeholder={currentJobId ? `Ask about job ${currentJobId}` : "Ask the assistant"}
+              disabled={busy || confirmBusy}
+            />
+            <SendButton type="submit" disabled={busy || confirmBusy || !input.trim()}>
+              {busy ? "Sending..." : "Send"}
+            </SendButton>
+          </Composer>
+
+          <Footer>{error ? <ErrorText>{error}</ErrorText> : null}</Footer>
+        </Panel>
+      )}
 
       <ConfirmDialog
         open={pendingAction !== null}
@@ -602,6 +567,6 @@ export function AssistantWidget() {
           }
         }}
       />
-    </>
+    </Shell>
   );
 }

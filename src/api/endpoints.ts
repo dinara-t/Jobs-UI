@@ -1,3 +1,5 @@
+import { HttpError } from "./http";
+
 import type {
   ChatRequest,
   ChatResponse,
@@ -90,12 +92,16 @@ async function request<T>(
   });
 
   if (!response.ok) {
-    let errorMessage = `Request failed with status ${response.status}`;
+    let errorBody: unknown = null;
 
     try {
-      const errorBody = (await response.json()) as { error?: string; message?: string };
-      errorMessage = errorBody.message ?? errorBody.error ?? errorMessage;
+      errorBody = (await response.json()) as {
+        error?: string;
+        message?: string;
+        reply?: string;
+      };
     } catch {
+      errorBody = null;
     }
 
     const looksLikeCsrfFailure = response.status === 403 && isUnsafe;
@@ -105,7 +111,7 @@ async function request<T>(
       return request<T>(path, init, baseUrl, false);
     }
 
-    throw new Error(errorMessage);
+    throw new HttpError(response.status, errorBody);
   }
 
   if (response.status === 204) {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import styled from "styled-components";
 import { api } from "../api/endpoints";
@@ -9,49 +9,60 @@ import type {
   ClarificationPrompt,
   PendingAction,
 } from "../api/types";
-import { ConfirmDialog } from "./ConfirmDialog";
 import { Button, Card, ErrorText, H2, Input, Muted, Spacer } from "./Primitives";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 type Props = {
   jobId: number;
 };
 
-type ChatMessage = {
+type Message = {
   id: number;
-  role: "user" | "assistant";
+  role: "assistant" | "user";
   text: string;
   suggestedActions?: AssistantAction[];
   clarificationPrompts?: ClarificationPrompt[];
 };
 
 const Messages = styled.div`
+  max-height: 360px;
+  overflow: auto;
   display: grid;
   gap: 10px;
 `;
 
-const MessageCard = styled.div<{ $role: "user" | "assistant" }>`
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid ${({ theme }) => theme.colors.border};
+const MessageCard = styled.div<{ $role: "assistant" | "user" }>`
+  justify-self: ${({ $role }) => ($role === "user" ? "end" : "start")};
+  max-width: 92%;
+  border-radius: 18px;
+  padding: 12px 14px;
+  white-space: pre-wrap;
+  line-height: 1.45;
+  border: 1px solid
+    ${({ theme, $role }) =>
+      $role === "user" ? theme.colors.primary : theme.colors.border};
   background: ${({ theme, $role }) =>
-    $role === "user" ? theme.colors.input : theme.colors.card};
+    $role === "user" ? theme.colors.primary : theme.colors.card};
+  color: ${({ theme, $role }) =>
+    $role === "user" ? theme.colors.primaryText : theme.colors.text};
 `;
 
 const Composer = styled.form`
   display: grid;
+  grid-template-columns: 1fr auto;
   gap: 10px;
 `;
 
 const Actions = styled.div`
   display: flex;
-  gap: 8px;
   flex-wrap: wrap;
+  gap: 10px;
 `;
 
 const Chips = styled.div`
   display: flex;
-  gap: 8px;
   flex-wrap: wrap;
+  gap: 8px;
   margin-top: 10px;
 `;
 
@@ -60,34 +71,23 @@ const ChipButton = styled.button`
   background: ${({ theme }) => theme.colors.bgElevated};
   color: ${({ theme }) => theme.colors.text};
   border-radius: 999px;
-  padding: 8px 12px;
-  font-size: 0.82rem;
-  font-weight: 700;
+  padding: 7px 11px;
+  font-size: 0.78rem;
   cursor: pointer;
 
   &:disabled {
-    opacity: 0.6;
+    opacity: 0.65;
     cursor: default;
   }
 `;
-
-let nextId = 1;
-
-function makeUserMessage(text: string): ChatMessage {
-  return {
-    id: nextId++,
-    role: "user",
-    text,
-  };
-}
 
 function makeAssistantMessage(
   text: string,
   suggestedActions?: AssistantAction[],
   clarificationPrompts?: ClarificationPrompt[],
-): ChatMessage {
+): Message {
   return {
-    id: nextId++,
+    id: Date.now() + Math.floor(Math.random() * 100000),
     role: "assistant",
     text,
     suggestedActions,
@@ -95,7 +95,25 @@ function makeAssistantMessage(
   };
 }
 
-function toConfirmMessage(action: PendingAction): string {
+function makeUserMessage(text: string): Message {
+  return {
+    id: Date.now() + Math.floor(Math.random() * 100000),
+    role: "user",
+    text,
+  };
+}
+
+function extractSuggestedTempId(reply: string): number | null {
+  const match = reply.match(/\btemp\s+#?(\d+)\b/i);
+  if (!match) {
+    return null;
+  }
+
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toConfirmMessage(action: PendingAction) {
   if (action.type === "assign_temp_to_job") {
     return `__confirm_assign__ temp ${action.tempId} to job ${action.jobId}`;
   }
@@ -103,56 +121,46 @@ function toConfirmMessage(action: PendingAction): string {
   return `__confirm_unassign__ job ${action.jobId}`;
 }
 
-function extractSuggestedTempId(text: string): number | null {
-  const directMatch = text.match(/\(Temp\s+(\d+)\)/i);
-  if (directMatch) {
-    return Number(directMatch[1]);
-  }
-
-  const fallbackMatch = text.match(/\bTemp\s+(\d+)\b/i);
-  if (fallbackMatch) {
-    return Number(fallbackMatch[1]);
-  }
-
-  return null;
-}
-
 export function JobAssistant({ jobId }: Props) {
   const queryClient = useQueryClient();
+  const messagesRef = useRef<HTMLDivElement | null>(null);
 
-  const [input, setInput] = useState("");
-  const [lastSuggestedTempId, setLastSuggestedTempId] = useState<number | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([
+  const [messages, setMessages] = useState<Message[]>([
     makeAssistantMessage(
+      `You are viewing job ${jobId}. Ask me to show job details, available temps, suggest the best temp, assign a temp, or unassign the current temp.`,
       [
-        `Ask about job ${jobId}.`,
-        `Examples:`,
-        `- Show details for this job`,
-        `- Show available temps for this job`,
-        `- Suggest the best temp for this job`,
-        `- Why is temp 5 unavailable for this job?`,
-        `- Assign temp 5 here`,
-        `- Assign them`,
-      ].join("\n"),
-      [
-        { type: "send_message", label: "Show job details", message: "Show details for this job" },
         {
           type: "send_message",
-          label: "Show available temps",
+          label: "Job details",
+          message: "Show details for this job",
+        },
+        {
+          type: "send_message",
+          label: "Available temps",
           message: "Show available temps for this job",
         },
         {
           type: "send_message",
-          label: "Suggest best temp",
+          label: "Best temp",
           message: "Suggest the best temp for this job",
         },
       ],
     ),
   ]);
+  const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [lastSuggestedTempId, setLastSuggestedTempId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!messagesRef.current) {
+      return;
+    }
+
+    messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+  }, [messages]);
 
   async function invalidateRelatedData() {
     await Promise.all([
@@ -260,6 +268,7 @@ export function JobAssistant({ jobId }: Props) {
       await invalidateRelatedData();
     } catch (err) {
       const messageText = getErrorMessage(err, "Failed to complete assistant action");
+      setPendingAction(null);
       setError(messageText);
       setMessages((prev) => [
         ...prev,
@@ -319,38 +328,25 @@ export function JobAssistant({ jobId }: Props) {
           </Button>
           <Button
             type="button"
-            onClick={() => void sendMessage("Why is temp 5 unavailable for this job?")}
+            onClick={() => void sendMessage("Unassign the current temp from this job")}
             disabled={busy || confirmBusy}
           >
-            Explain availability
-          </Button>
-          <Button
-            type="button"
-            onClick={() => void sendMessage("Assign them")}
-            disabled={busy || confirmBusy || lastSuggestedTempId == null}
-          >
-            Assign last suggestion
+            Unassign
           </Button>
         </Actions>
 
         <Spacer h={14} />
 
-        <Messages>
+        <Messages ref={messagesRef}>
           {messages.map((message) => (
             <MessageCard key={message.id} $role={message.role}>
-              <strong>{message.role === "user" ? "You" : "Assistant"}</strong>
-              <Spacer h={6} />
-              <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                {message.text}
-              </div>
+              {message.text}
 
-              {message.role === "assistant" &&
-              ((message.suggestedActions?.length ?? 0) > 0 ||
-                (message.clarificationPrompts?.length ?? 0) > 0) ? (
+              {message.suggestedActions?.length ? (
                 <Chips>
-                  {message.suggestedActions?.map((action, index) => (
+                  {message.suggestedActions.map((action, index) => (
                     <ChipButton
-                      key={`${message.id}-action-${index}-${action.label}`}
+                      key={`${message.id}-action-${index}`}
                       type="button"
                       disabled={busy || confirmBusy}
                       onClick={() => void runAssistantAction(action)}
@@ -358,10 +354,14 @@ export function JobAssistant({ jobId }: Props) {
                       {action.label}
                     </ChipButton>
                   ))}
+                </Chips>
+              ) : null}
 
-                  {message.clarificationPrompts?.map((prompt) => (
+              {message.clarificationPrompts?.length ? (
+                <Chips>
+                  {message.clarificationPrompts.map((prompt) => (
                     <ChipButton
-                      key={`${message.id}-prompt-${prompt.id}`}
+                      key={prompt.id}
                       type="button"
                       disabled={busy || confirmBusy}
                       onClick={() => void sendMessage(prompt.message)}
